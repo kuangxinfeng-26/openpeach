@@ -1,10 +1,10 @@
 import "dotenv/config";
 import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrate, openTaoqibaoDb } from "../../../packages/store-sqlite/src/index.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, resolveStateDbPath } from "./config.js";
 
 export type DoctorCheck = {
   name:
@@ -121,8 +121,7 @@ function checkRequiredEnv(env: NodeJS.ProcessEnv): DoctorCheck {
 }
 
 function checkStateDbPath(env: NodeJS.ProcessEnv): DoctorCheck {
-  const stateDbPath =
-    env.TAOQIBAO_STATE_DB?.trim() || join(homedir(), ".taoqibao", "state.db");
+  const stateDbPath = resolveStateDbPath(env);
   const existedBeforeProbe = existsSync(stateDbPath);
 
   try {
