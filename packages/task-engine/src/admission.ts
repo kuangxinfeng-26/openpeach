@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { TaskPacketSchema, type TaskPacket } from "./task-packet.js";
 
 export type RequesterIdentity = {
@@ -11,6 +11,9 @@ export type RequesterIdentity = {
 export type AdmitTaskInput = {
   text: string;
   sessionId: string;
+  taskId?: string;
+  idempotencyKey?: string;
+  messageId?: string;
   requesterIdentity: RequesterIdentity;
 };
 
@@ -22,6 +25,14 @@ export type AdmissionDecision = {
 };
 
 export function admitTask(input: AdmitTaskInput): AdmissionDecision {
+  const objective = input.text.trim();
+  if (objective.length === 0) {
+    return {
+      admitted: false,
+      reason: "Task denied because text is empty or whitespace",
+    };
+  }
+
   if (
     input.requesterIdentity.allowed === false ||
     input.requesterIdentity.role !== "owner"
@@ -37,8 +48,8 @@ export function admitTask(input: AdmitTaskInput): AdmissionDecision {
     input.requesterIdentity.channelIdentityId ??
     "owner";
   const task = TaskPacketSchema.parse({
-    taskId: buildTaskId(input.sessionId, requesterIdentityId, input.text),
-    objective: input.text,
+    taskId: input.taskId ?? input.messageId ?? input.idempotencyKey ?? randomUUID(),
+    objective,
     scopeKind: "conversation",
     scopeRef: input.sessionId,
     sourceSessionId: input.sessionId,
@@ -63,14 +74,4 @@ export function admitTask(input: AdmitTaskInput): AdmissionDecision {
     executionMode: task.executionMode,
     task,
   };
-}
-
-function buildTaskId(
-  sessionId: string,
-  requesterIdentityId: string,
-  objective: string,
-): string {
-  return createHash("sha256")
-    .update(`${sessionId}\n${requesterIdentityId}\n${objective}`, "utf8")
-    .digest("hex");
 }

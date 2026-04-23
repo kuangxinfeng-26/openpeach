@@ -13,7 +13,7 @@ export type TaskRepository = {
     taskId: string,
     status: "running" | "succeeded" | "failed",
   ): void;
-  getTask(taskId: string): { taskId: string; status: string } | undefined;
+  getTask(taskId: string): { taskId: string; status: TaskStatus } | undefined;
 };
 
 export class TaskRegistry {
@@ -39,7 +39,7 @@ export class TaskRegistry {
     this.repository.updateTaskStatus(taskId, "failed");
   }
 
-  get(taskId: string): { taskId: string; status: string } | undefined {
+  get(taskId: string): { taskId: string; status: TaskStatus } | undefined {
     return this.repository.getTask(taskId);
   }
 }

@@ -46,6 +46,13 @@ export interface TaskRepositoryPacket {
   executionMode: string;
 }
 
+export type TaskRepositoryStatus =
+  | "created"
+  | "admitted"
+  | "running"
+  | "succeeded"
+  | "failed";
+
 interface SearchMessageRow {
   message_id: string;
   session_id: string;
@@ -58,7 +65,7 @@ interface SessionKeyRow {
 
 interface TaskRow {
   task_id: string;
-  status: string;
+  status: TaskRepositoryStatus;
 }
 
 export function createRepositories(db: TaoqibaoDb) {
@@ -170,6 +177,7 @@ export function createRepositories(db: TaoqibaoDb) {
       execution_mode,
       status,
       objective,
+      packet_json,
       created_at_ms,
       updated_at_ms
     )
@@ -180,6 +188,7 @@ export function createRepositories(db: TaoqibaoDb) {
       @executionMode,
       @status,
       @objective,
+      @packetJson,
       @nowMs,
       @nowMs
     )
@@ -267,6 +276,7 @@ export function createRepositories(db: TaoqibaoDb) {
       insertTaskStatement.run({
         ...packet,
         status,
+        packetJson: JSON.stringify(packet),
         nowMs: Date.now(),
       });
     },
@@ -292,7 +302,9 @@ export function createRepositories(db: TaoqibaoDb) {
       });
     },
 
-    getTask(taskId: string): { taskId: string; status: string } | undefined {
+    getTask(
+      taskId: string,
+    ): { taskId: string; status: TaskRepositoryStatus } | undefined {
       const row = getTask(taskId);
       if (!row) {
         return undefined;

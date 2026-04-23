@@ -33,6 +33,7 @@ export function migrate(db: TaoqibaoDb): void {
       execution_mode TEXT NOT NULL,
       status TEXT NOT NULL,
       objective TEXT NOT NULL,
+      packet_json TEXT NOT NULL,
       created_at_ms INTEGER NOT NULL,
       updated_at_ms INTEGER NOT NULL
     );
@@ -57,4 +58,11 @@ export function migrate(db: TaoqibaoDb): void {
       updated_at_ms INTEGER NOT NULL
     );
   `);
+
+  const taskColumns = db.prepare("PRAGMA table_info(tasks)").all() as Array<{
+    name: string;
+  }>;
+  if (!taskColumns.some((column) => column.name === "packet_json")) {
+    db.exec("ALTER TABLE tasks ADD COLUMN packet_json TEXT");
+  }
 }
