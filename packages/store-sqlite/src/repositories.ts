@@ -126,7 +126,7 @@ export function createRepositories(db: TaoqibaoDb) {
   `);
 
   const insertOutboxOnceStatement = db.prepare(`
-    INSERT OR IGNORE INTO outbox (
+    INSERT INTO outbox (
       outbox_id,
       idempotency_key,
       channel,
@@ -146,6 +146,7 @@ export function createRepositories(db: TaoqibaoDb) {
       @nowMs,
       @nowMs
     )
+    ON CONFLICT(idempotency_key) DO NOTHING
   `);
 
   return {

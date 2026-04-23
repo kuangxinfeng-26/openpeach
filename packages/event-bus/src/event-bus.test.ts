@@ -110,7 +110,7 @@ describe("event bus", () => {
       const row = db
         .prepare(
           `
-            SELECT outbox_id, channel, target_ref, payload_json, status
+            SELECT outbox_id, channel, target_ref, payload_json, status, created_at_ms, updated_at_ms
             FROM outbox
             WHERE idempotency_key = ?
           `,
@@ -122,17 +122,50 @@ describe("event bus", () => {
             target_ref: string;
             payload_json: string;
             status: string;
+            created_at_ms: number;
+            updated_at_ms: number;
           }
         | undefined;
 
       expect(countRow.count).toBe(1);
-      expect(row).toEqual({
+      expect(row).toMatchObject({
         outbox_id: "outbox-1",
         channel: "telegram",
         target_ref: "chat:456",
         payload_json: JSON.stringify({ text: "First send" }),
         status: "pending",
       });
+      expect(row?.created_at_ms).toEqual(expect.any(Number));
+      expect(row?.updated_at_ms).toEqual(expect.any(Number));
+    } finally {
+      db.close();
+    }
+  });
+
+  it("throws when a duplicate outbox id uses a different idempotency key", () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+
+      repositories.insertOutboxOnce({
+        outboxId: "outbox-1",
+        idempotencyKey: "telegram:session-1:task-1",
+        channel: "telegram",
+        targetRef: "chat:456",
+        payloadJson: JSON.stringify({ text: "First send" }),
+      });
+
+      expect(() =>
+        repositories.insertOutboxOnce({
+          outboxId: "outbox-1",
+          idempotencyKey: "telegram:session-1:task-2",
+          channel: "telegram",
+          targetRef: "chat:456",
+          payloadJson: JSON.stringify({ text: "Second send" }),
+        }),
+      ).toThrow(/unique|constraint/i);
     } finally {
       db.close();
     }
