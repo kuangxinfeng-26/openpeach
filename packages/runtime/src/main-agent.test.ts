@@ -226,11 +226,43 @@ describe("MainAgentRuntime", () => {
         sessionSearch(query) {
           expect(query).toBe("上次");
 
-          return Array.from({ length: 6 }, (_, index) => ({
-            messageId: `history-${index + 1}`,
-            sessionId: session.sessionId,
-            snippet: `之前第${index + 1}次聊天提到想去公园`,
-          }));
+          return [
+            {
+              messageId: "history-1",
+              sessionId: session.sessionId,
+              snippet: "之前第1次聊天提到想去公园",
+            },
+            {
+              messageId: "history-2-other-session",
+              sessionId: "different-session",
+              snippet: "这条不该进入当前会话上下文",
+            },
+            {
+              messageId: "history-3",
+              sessionId: session.sessionId,
+              snippet: "之前第3次聊天提到想去公园",
+            },
+            {
+              messageId: "history-4",
+              sessionId: session.sessionId,
+              snippet: "之前第4次聊天提到想去公园",
+            },
+            {
+              messageId: "history-5",
+              sessionId: session.sessionId,
+              snippet: "之前第5次聊天提到想去公园",
+            },
+            {
+              messageId: "history-6",
+              sessionId: session.sessionId,
+              snippet: "之前第6次聊天提到想去公园",
+            },
+            {
+              messageId: "history-7",
+              sessionId: session.sessionId,
+              snippet: "之前第7次聊天提到想去公园",
+            },
+          ];
         },
       });
 
@@ -245,14 +277,193 @@ describe("MainAgentRuntime", () => {
         role: "user",
         content: [
           "用户当前消息：上次我们之前聊到什么历史内容？",
-          "相关历史片段：",
-          "[1] 之前第1次聊天提到想去公园",
-          "[2] 之前第2次聊天提到想去公园",
-          "[3] 之前第3次聊天提到想去公园",
-          "[4] 之前第4次聊天提到想去公园",
-          "[5] 之前第5次聊天提到想去公园",
+          "检索到的当前会话历史：",
+          "[1] history-1: 之前第1次聊天提到想去公园",
+          "[2] history-3: 之前第3次聊天提到想去公园",
+          "[3] history-4: 之前第4次聊天提到想去公园",
+          "[4] history-5: 之前第5次聊天提到想去公园",
+          "[5] history-6: 之前第6次聊天提到想去公园",
         ].join("\n"),
       });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("reuses an existing assistant message so retry can continue queueing the outbox", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      const session = getOrCreateSession(repositories, {
+        familyId: "family-main",
+        coreAgentId: "main",
+        channel: "telegram",
+        accountId: "bot-main",
+        peerId: "456",
+        threadId: "dm",
+        scene: "default",
+      });
+      const envelope = createEnvelope({
+        text: "再试一次",
+        messageId: "tg-msg-replay",
+      });
+      const decision = admitTask({
+        text: envelope.text,
+        sessionId: session.sessionId,
+        messageId: envelope.messageId,
+        requesterIdentity: { role: "owner", personId: "owner-1" },
+      });
+
+      expect(decision.task).toBeDefined();
+
+      repositories.appendMessage({
+        messageId: "user:tg-msg-replay",
+        sessionId: session.sessionId,
+        role: "user",
+        text: "再试一次",
+        timestampMs: envelope.timestampMs,
+      });
+      repositories.createTask(decision.task!, "created");
+      repositories.createTask(decision.task!, "admitted");
+      repositories.updateTaskStatus(decision.task!.taskId, "running");
+      repositories.appendMessage({
+        messageId: "assistant:tg-msg-replay",
+        sessionId: session.sessionId,
+        role: "assistant",
+        text: "这是上次已经生成的回复。",
+        timestampMs: envelope.timestampMs,
+      });
+
+      const runtime = new MainAgentRuntime({
+        repositories,
+        model: {
+          async complete() {
+            throw new Error("model should not be called on replay");
+          },
+        },
+        emit() {},
+      });
+
+      const result = await runtime.handleTurn({
+        envelope,
+        session,
+        task: decision.task!,
+      });
+
+      expect(result).toEqual({
+        replyText: "这是上次已经生成的回复。",
+        outboxId: "outbox:telegram:tg-msg-replay",
+      });
+
+      const countRow = db
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM session_messages
+            WHERE session_id = ?
+          `,
+        )
+        .get(session.sessionId) as { count: number };
+
+      expect(countRow.count).toBe(2);
+      expect(repositories.getTask(decision.task!.taskId)?.status).toBe("succeeded");
+
+      const outboxRow = db
+        .prepare(
+          `
+            SELECT outbox_id, payload_json, status
+            FROM outbox
+            WHERE outbox_id = ?
+          `,
+        )
+        .get("outbox:telegram:tg-msg-replay") as
+        | { outbox_id: string; payload_json: string; status: string }
+        | undefined;
+
+      expect(outboxRow).toEqual({
+        outbox_id: "outbox:telegram:tg-msg-replay",
+        payload_json: JSON.stringify({
+          chatId: "456",
+          text: "这是上次已经生成的回复。",
+          replyToMessageId: "tg-msg-replay",
+        }),
+        status: "pending",
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("marks the task failed and emits task.failed when the model call throws", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      const session = getOrCreateSession(repositories, {
+        familyId: "family-main",
+        coreAgentId: "main",
+        channel: "telegram",
+        accountId: "bot-main",
+        peerId: "456",
+        threadId: "dm",
+        scene: "default",
+      });
+      const envelope = createEnvelope({
+        text: "你还在吗",
+        messageId: "tg-msg-fail",
+      });
+      const decision = admitTask({
+        text: envelope.text,
+        sessionId: session.sessionId,
+        messageId: envelope.messageId,
+        requesterIdentity: { role: "owner", personId: "owner-1" },
+      });
+
+      expect(decision.task).toBeDefined();
+
+      const events: TaoqibaoEvent[] = [];
+      const runtime = new MainAgentRuntime({
+        repositories,
+        model: {
+          async complete() {
+            throw new Error("model unavailable");
+          },
+        },
+        emit(event) {
+          events.push(event);
+        },
+      });
+
+      await expect(
+        runtime.handleTurn({
+          envelope,
+          session,
+          task: decision.task!,
+        }),
+      ).rejects.toThrow("model unavailable");
+
+      expect(repositories.getTask(decision.task!.taskId)).toEqual({
+        taskId: decision.task!.taskId,
+        status: "failed",
+      });
+
+      expect(events).toEqual([
+        {
+          type: "task.created",
+          sessionId: session.sessionId,
+          taskId: decision.task!.taskId,
+          payload: { objective: "你还在吗" },
+        },
+        {
+          type: "task.failed",
+          sessionId: session.sessionId,
+          taskId: decision.task!.taskId,
+          payload: { reason: "model unavailable" },
+        },
+      ]);
     } finally {
       db.close();
     }

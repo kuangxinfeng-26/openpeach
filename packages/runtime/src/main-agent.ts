@@ -32,80 +32,98 @@ export class MainAgentRuntime {
     outboxId: string;
   }> {
     const { envelope, session, task } = input;
+    const userMessageKey = userMessageId(envelope.messageId);
+    const assistantMessageKey = assistantMessageId(envelope.messageId);
+    let taskCreated = false;
 
-    this.deps.repositories.appendMessage({
-      messageId: userMessageId(envelope.messageId),
-      sessionId: session.sessionId,
-      role: "user",
-      text: envelope.text,
-      timestampMs: envelope.timestampMs,
-    });
-
-    this.deps.repositories.createTask(task, "created");
-    this.deps.repositories.createTask(task, "admitted");
-    this.deps.repositories.updateTaskStatus(task.taskId, "running");
-
-    this.deps.emit({
-      type: "task.created",
-      sessionId: session.sessionId,
-      taskId: task.taskId,
-      payload: { objective: task.objective },
-    });
-
-    const replyText = await this.deps.model.complete([
-      {
-        role: "system",
-        content: SYSTEM_PROMPT,
-      },
-      {
+    try {
+      this.appendMessageIfMissing({
+        messageId: userMessageKey,
+        sessionId: session.sessionId,
         role: "user",
-        content: buildUserPrompt(envelope.text, this.lookupHistory(envelope.text)),
-      },
-    ]);
+        text: envelope.text,
+        timestampMs: envelope.timestampMs,
+      });
 
-    this.deps.repositories.appendMessage({
-      messageId: assistantMessageId(envelope.messageId),
-      sessionId: session.sessionId,
-      role: "assistant",
-      text: replyText,
-      timestampMs: envelope.timestampMs,
-    });
+      this.ensureTaskPrepared(task);
+      taskCreated = true;
+      this.ensureTaskRunning(task.taskId);
 
-    const outboxId = outboxMessageId(envelope.messageId);
-    this.deps.repositories.insertOutboxOnce({
-      outboxId,
-      idempotencyKey: `telegram:reply:${envelope.messageId}`,
-      channel: "telegram",
-      targetRef: envelope.chatId,
-      payloadJson: JSON.stringify({
-        chatId: envelope.chatId,
-        text: replyText,
-        replyToMessageId: envelope.messageId,
-      }),
-    });
+      this.deps.emit({
+        type: "task.created",
+        sessionId: session.sessionId,
+        taskId: task.taskId,
+        payload: { objective: task.objective },
+      });
 
-    this.deps.repositories.updateTaskStatus(task.taskId, "succeeded");
+      const existingAssistantMessage =
+        this.deps.repositories.getMessageById(assistantMessageKey);
+      const replyText =
+        existingAssistantMessage?.sessionId === session.sessionId
+          ? existingAssistantMessage.text
+          : await this.generateReply(envelope.text, session.sessionId);
 
-    this.deps.emit({
-      type: "task.completed",
-      sessionId: session.sessionId,
-      taskId: task.taskId,
-      payload: { status: "succeeded" },
-    });
-    this.deps.emit({
-      type: "reply.queued",
-      sessionId: session.sessionId,
-      taskId: task.taskId,
-      payload: { outboxId },
-    });
+      if (!existingAssistantMessage) {
+        this.deps.repositories.appendMessage({
+          messageId: assistantMessageKey,
+          sessionId: session.sessionId,
+          role: "assistant",
+          text: replyText,
+          timestampMs: envelope.timestampMs,
+        });
+      }
 
-    return {
-      replyText,
-      outboxId,
-    };
+      const outboxId = outboxMessageId(envelope.messageId);
+      this.deps.repositories.insertOutboxOnce({
+        outboxId,
+        idempotencyKey: `telegram:reply:${envelope.messageId}`,
+        channel: "telegram",
+        targetRef: envelope.chatId,
+        payloadJson: JSON.stringify({
+          chatId: envelope.chatId,
+          text: replyText,
+          replyToMessageId: envelope.messageId,
+        }),
+      });
+
+      this.markTaskSucceeded(task.taskId);
+
+      this.deps.emit({
+        type: "task.completed",
+        sessionId: session.sessionId,
+        taskId: task.taskId,
+        payload: { status: "succeeded" },
+      });
+      this.deps.emit({
+        type: "reply.queued",
+        sessionId: session.sessionId,
+        taskId: task.taskId,
+        payload: { outboxId },
+      });
+
+      return {
+        replyText,
+        outboxId,
+      };
+    } catch (error) {
+      if (taskCreated) {
+        this.markTaskFailed(task.taskId);
+        this.deps.emit({
+          type: "task.failed",
+          sessionId: session.sessionId,
+          taskId: task.taskId,
+          payload: { reason: toErrorMessage(error) },
+        });
+      }
+
+      throw error;
+    }
   }
 
-  private lookupHistory(text: string): Array<{ snippet: string }> {
+  private lookupHistory(
+    text: string,
+    sessionId: string,
+  ): Array<{ messageId: string; snippet: string }> {
     if (!this.deps.sessionSearch) {
       return [];
     }
@@ -115,7 +133,76 @@ export class MainAgentRuntime {
       return [];
     }
 
-    return this.deps.sessionSearch(query).slice(0, 5);
+    return this.deps.sessionSearch(query)
+      .filter((result) => result.sessionId === sessionId)
+      .slice(0, 5)
+      .map((result) => ({
+        messageId: result.messageId,
+        snippet: result.snippet,
+      }));
+  }
+
+  private async generateReply(text: string, sessionId: string): Promise<string> {
+    return this.deps.model.complete([
+      {
+        role: "system",
+        content: SYSTEM_PROMPT,
+      },
+      {
+        role: "user",
+        content: buildUserPrompt(text, this.lookupHistory(text, sessionId)),
+      },
+    ]);
+  }
+
+  private appendMessageIfMissing(input: {
+    messageId: string;
+    sessionId: string;
+    role: string;
+    text: string;
+    timestampMs: number;
+  }): void {
+    const existing = this.deps.repositories.getMessageById(input.messageId);
+    if (existing) {
+      return;
+    }
+
+    this.deps.repositories.appendMessage(input);
+  }
+
+  private ensureTaskRunning(taskId: string): void {
+    const existingTask = this.deps.repositories.getTask(taskId);
+    if (!existingTask || existingTask.status === "admitted") {
+      this.deps.repositories.updateTaskStatus(taskId, "running");
+    }
+  }
+
+  private ensureTaskPrepared(task: TaskPacket): void {
+    const existingTask = this.deps.repositories.getTask(task.taskId);
+
+    if (!existingTask) {
+      this.deps.repositories.createTask(task, "created");
+      this.deps.repositories.createTask(task, "admitted");
+      return;
+    }
+
+    if (existingTask.status === "created") {
+      this.deps.repositories.createTask(task, "admitted");
+    }
+  }
+
+  private markTaskSucceeded(taskId: string): void {
+    const existingTask = this.deps.repositories.getTask(taskId);
+    if (existingTask?.status === "running") {
+      this.deps.repositories.updateTaskStatus(taskId, "succeeded");
+    }
+  }
+
+  private markTaskFailed(taskId: string): void {
+    const existingTask = this.deps.repositories.getTask(taskId);
+    if (existingTask?.status === "running") {
+      this.deps.repositories.updateTaskStatus(taskId, "failed");
+    }
   }
 }
 
@@ -127,7 +214,17 @@ export type MainAgentRepositories = {
     text: string;
     timestampMs: number;
   }): void;
+  getMessageById(messageId: string): {
+    messageId: string;
+    sessionId: string;
+    role: string;
+    text: string;
+    timestampMs: number;
+  } | undefined;
   createTask(packet: TaskPacket, status: "created" | "admitted"): void;
+  getTask(
+    taskId: string,
+  ): { taskId: string; status: "created" | "admitted" | "running" | "succeeded" | "failed" } | undefined;
   updateTaskStatus(
     taskId: string,
     status: "running" | "succeeded" | "failed",
@@ -149,7 +246,7 @@ export type MainAgentTurnInput = {
 
 function buildUserPrompt(
   text: string,
-  history: Array<{ snippet: string }>,
+  history: Array<{ messageId: string; snippet: string }>,
 ): string {
   if (history.length === 0) {
     return text;
@@ -157,9 +254,19 @@ function buildUserPrompt(
 
   return [
     `用户当前消息：${text}`,
-    "相关历史片段：",
-    ...history.map((item, index) => `[${index + 1}] ${item.snippet}`),
+    "检索到的当前会话历史：",
+    ...history.map(
+      (item, index) => `[${index + 1}] ${item.messageId}: ${item.snippet}`,
+    ),
   ].join("\n");
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.length > 0) {
+    return error.message;
+  }
+
+  return "unknown runtime error";
 }
 
 function userMessageId(messageId: string): string {

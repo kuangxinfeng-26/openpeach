@@ -38,6 +38,14 @@ export interface SearchMessageResult {
   text: string;
 }
 
+export interface MessageRecord {
+  messageId: string;
+  sessionId: string;
+  role: string;
+  text: string;
+  timestampMs: number;
+}
+
 export interface TaskRepositoryPacket {
   taskId: string;
   objective: string;
@@ -57,6 +65,14 @@ interface SearchMessageRow {
   message_id: string;
   session_id: string;
   text: string;
+}
+
+interface MessageRow {
+  message_id: string;
+  session_id: string;
+  role: string;
+  text: string;
+  timestamp_ms: number;
 }
 
 interface SessionKeyRow {
@@ -106,6 +122,12 @@ export function createRepositories(db: TaoqibaoDb) {
       timestamp_ms
     )
     VALUES (@messageId, @sessionId, @role, @text, @timestampMs)
+  `);
+
+  const getMessageStatement = db.prepare(`
+    SELECT message_id, session_id, role, text, timestamp_ms
+    FROM session_messages
+    WHERE message_id = ?
   `);
 
   const appendMessageFtsStatement = db.prepare(`
@@ -233,6 +255,21 @@ export function createRepositories(db: TaoqibaoDb) {
 
     appendMessage(input: AppendMessageInput): void {
       appendMessageTransaction(input);
+    },
+
+    getMessageById(messageId: string): MessageRecord | undefined {
+      const row = getMessageStatement.get(messageId) as MessageRow | undefined;
+      if (!row) {
+        return undefined;
+      }
+
+      return {
+        messageId: row.message_id,
+        sessionId: row.session_id,
+        role: row.role,
+        text: row.text,
+        timestampMs: row.timestamp_ms,
+      };
     },
 
     insertEvent(input: InsertEventInput): void {
