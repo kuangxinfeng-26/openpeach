@@ -64,11 +64,11 @@ function splitCsv(value: string, key: string): string[] {
 }
 
 function parsePositiveInt(value: string, key: string): number {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
+  if (!/^[1-9]\d*$/.test(value)) {
     throw new Error(`Invalid positive integer env var: ${key}`);
   }
 
+  const parsed = Number.parseInt(value, 10);
   return parsed;
 }
 

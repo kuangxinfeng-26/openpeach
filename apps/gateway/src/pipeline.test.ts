@@ -11,7 +11,26 @@ import {
   migrate,
   openTaoqibaoDb,
 } from "../../../packages/store-sqlite/src/index.js";
+import { loadConfig } from "./config.js";
 import { handleHumanEnvelope } from "./pipeline.js";
+
+describe("loadConfig", () => {
+  it("rejects malformed timeout env values", () => {
+    expect(() =>
+      loadConfig({
+        TAOQIBAO_FAMILY_ID: "family-main",
+        TAOQIBAO_CORE_AGENT_ID: "main",
+        TAOQIBAO_OWNER_TELEGRAM_USER_IDS: "456",
+        TELEGRAM_BOT_TOKEN: "token",
+        TAOQIBAO_MODEL_BASE_URL: "https://api.example.com/v1",
+        TAOQIBAO_MODEL_API_KEY: "key",
+        TAOQIBAO_MODEL_NAME: "model",
+        TAOQIBAO_MODEL_TIMEOUT_MS: "30000ms",
+        TAOQIBAO_LOG_LEVEL: "info",
+      }),
+    ).toThrow("Invalid positive integer env var: TAOQIBAO_MODEL_TIMEOUT_MS");
+  });
+});
 
 describe("handleHumanEnvelope", () => {
   let dir: string | undefined;
