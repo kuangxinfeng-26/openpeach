@@ -34,6 +34,18 @@ describe("session kernel", () => {
     );
   });
 
+  it("rejects field values containing reserved delimiters", () => {
+    expect(() =>
+      buildSessionKey({
+        familyId: "main",
+        coreAgentId: "main",
+        channel: "telegram",
+        accountId: "bot-main",
+        peerId: "456/789",
+      }),
+    ).toThrow(/peerId.*reserved delimiter/i);
+  });
+
   it("returns the same session id for the same session key in the same db", () => {
     const db = openTestDb();
 
@@ -66,6 +78,11 @@ describe("session kernel", () => {
         familyId: "main",
         coreAgentId: "main",
       });
+
+      const row = db
+        .prepare("SELECT COUNT(*) AS count FROM sessions")
+        .get() as { count: number };
+      expect(row.count).toBe(1);
     } finally {
       db.close();
     }

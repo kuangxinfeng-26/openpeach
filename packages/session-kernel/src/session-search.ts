@@ -1,6 +1,10 @@
-import type { createRepositories } from "../../store-sqlite/src/repositories.js";
-
-type SessionRepo = ReturnType<typeof createRepositories>;
+export interface SessionSearchRepo {
+  searchMessages(query: string): Array<{
+    messageId: string;
+    sessionId: string;
+    text: string;
+  }>;
+}
 
 export interface SessionSearchResult {
   messageId: string;
@@ -9,7 +13,7 @@ export interface SessionSearchResult {
 }
 
 export function sessionSearch(
-  repo: SessionRepo,
+  repo: SessionSearchRepo,
   query: string,
 ): SessionSearchResult[] {
   return repo.searchMessages(query).map((result) => ({

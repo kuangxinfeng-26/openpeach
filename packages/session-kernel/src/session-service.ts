@@ -1,8 +1,14 @@
 import { createHash } from "node:crypto";
-import type { createRepositories } from "../../store-sqlite/src/repositories.js";
 import { buildSessionKey, type SessionKeyInput } from "./session-key.js";
 
-type SessionRepo = ReturnType<typeof createRepositories>;
+export interface SessionUpsertRepo {
+  upsertSession(input: {
+    sessionId: string;
+    sessionKey: string;
+    familyId: string;
+    coreAgentId: string;
+  }): void;
+}
 
 export type SessionContext = {
   sessionId: string;
@@ -12,7 +18,7 @@ export type SessionContext = {
 };
 
 export function getOrCreateSession(
-  repo: SessionRepo,
+  repo: SessionUpsertRepo,
   input: SessionKeyInput & { coreAgentId: "main" },
 ): SessionContext {
   const sessionKey = buildSessionKey(input);
