@@ -469,6 +469,108 @@ describe("MainAgentRuntime", () => {
     }
   });
 
+  it("revives a failed turn on retry and finishes it successfully", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      const session = getOrCreateSession(repositories, {
+        familyId: "family-main",
+        coreAgentId: "main",
+        channel: "telegram",
+        accountId: "bot-main",
+        peerId: "456",
+        threadId: "dm",
+        scene: "default",
+      });
+      const envelope = createEnvelope({
+        text: "帮我继续刚才那条",
+        messageId: "tg-msg-revive",
+      });
+      const decision = admitTask({
+        text: envelope.text,
+        sessionId: session.sessionId,
+        messageId: envelope.messageId,
+        requesterIdentity: { role: "owner", personId: "owner-1" },
+      });
+
+      expect(decision.task).toBeDefined();
+
+      let failOutboxInsert = true;
+      const flakyRepositories = {
+        ...repositories,
+        insertOutboxOnce(input: {
+          outboxId: string;
+          idempotencyKey: string;
+          channel: string;
+          targetRef: string;
+          payloadJson: string;
+        }) {
+          if (failOutboxInsert) {
+            failOutboxInsert = false;
+            throw new Error("outbox unavailable");
+          }
+
+          repositories.insertOutboxOnce(input);
+        },
+      };
+
+      const firstRuntime = new MainAgentRuntime({
+        repositories: flakyRepositories,
+        model: {
+          async complete() {
+            return "这是第一次已经生成的回复。";
+          },
+        },
+        emit() {},
+      });
+
+      await expect(
+        firstRuntime.handleTurn({
+          envelope,
+          session,
+          task: decision.task!,
+        }),
+      ).rejects.toThrow("outbox unavailable");
+
+      expect(repositories.getTask(decision.task!.taskId)).toEqual({
+        taskId: decision.task!.taskId,
+        status: "failed",
+      });
+      expect(repositories.getMessageById("assistant:tg-msg-revive")?.text).toBe(
+        "这是第一次已经生成的回复。",
+      );
+
+      const secondRuntime = new MainAgentRuntime({
+        repositories,
+        model: {
+          async complete() {
+            throw new Error("model should not be called on revived retry");
+          },
+        },
+        emit() {},
+      });
+
+      const result = await secondRuntime.handleTurn({
+        envelope,
+        session,
+        task: decision.task!,
+      });
+
+      expect(result).toEqual({
+        replyText: "这是第一次已经生成的回复。",
+        outboxId: "outbox:telegram:tg-msg-revive",
+      });
+      expect(repositories.getTask(decision.task!.taskId)).toEqual({
+        taskId: decision.task!.taskId,
+        status: "succeeded",
+      });
+    } finally {
+      db.close();
+    }
+  });
+
   function openTestDb() {
     dir = mkdtempSync(join(tmpdir(), "taoqibao-runtime-"));
     return openTaoqibaoDb(join(dir, "state.db"));

@@ -174,6 +174,11 @@ export class MainAgentRuntime {
     const existingTask = this.deps.repositories.getTask(taskId);
     if (!existingTask || existingTask.status === "admitted") {
       this.deps.repositories.updateTaskStatus(taskId, "running");
+      return;
+    }
+
+    if (existingTask.status === "failed") {
+      this.deps.repositories.reviveTask(taskId);
     }
   }
 
@@ -229,6 +234,7 @@ export type MainAgentRepositories = {
     taskId: string,
     status: "running" | "succeeded" | "failed",
   ): void;
+  reviveTask(taskId: string): void;
   insertOutboxOnce(input: {
     outboxId: string;
     idempotencyKey: string;

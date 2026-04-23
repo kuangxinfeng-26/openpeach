@@ -339,6 +339,27 @@ export function createRepositories(db: TaoqibaoDb) {
       });
     },
 
+    reviveTask(taskId: string): void {
+      const existing = getTask(taskId);
+      if (!existing) {
+        throw new Error(`task not found: ${taskId}`);
+      }
+      if (existing.status === "running") {
+        return;
+      }
+      if (existing.status !== "failed") {
+        throw new Error(
+          `invalid task revive transition: ${existing.status} -> running`,
+        );
+      }
+
+      updateTaskStatusStatement.run({
+        taskId,
+        status: "running",
+        nowMs: Date.now(),
+      });
+    },
+
     getTask(
       taskId: string,
     ): { taskId: string; status: TaskRepositoryStatus } | undefined {
