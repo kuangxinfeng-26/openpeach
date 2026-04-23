@@ -15,6 +15,23 @@ export interface AppendMessageInput {
   timestampMs: number;
 }
 
+export interface InsertEventInput {
+  eventId: string;
+  eventType: string;
+  taskId?: string;
+  sessionId?: string;
+  payloadJson: string;
+  createdAtMs: number;
+}
+
+export interface InsertOutboxOnceInput {
+  outboxId: string;
+  idempotencyKey: string;
+  channel: string;
+  targetRef: string;
+  payloadJson: string;
+}
+
 export interface SearchMessageResult {
   messageId: string;
   sessionId: string;
@@ -89,6 +106,48 @@ export function createRepositories(db: TaoqibaoDb) {
     LIMIT 20
   `);
 
+  const insertEventStatement = db.prepare(`
+    INSERT INTO events (
+      event_id,
+      event_type,
+      task_id,
+      session_id,
+      payload_json,
+      created_at_ms
+    )
+    VALUES (
+      @eventId,
+      @eventType,
+      @taskId,
+      @sessionId,
+      @payloadJson,
+      @createdAtMs
+    )
+  `);
+
+  const insertOutboxOnceStatement = db.prepare(`
+    INSERT OR IGNORE INTO outbox (
+      outbox_id,
+      idempotency_key,
+      channel,
+      target_ref,
+      payload_json,
+      status,
+      created_at_ms,
+      updated_at_ms
+    )
+    VALUES (
+      @outboxId,
+      @idempotencyKey,
+      @channel,
+      @targetRef,
+      @payloadJson,
+      'pending',
+      @nowMs,
+      @nowMs
+    )
+  `);
+
   return {
     upsertSession(input: UpsertSessionInput): void {
       const existing = findSessionByKeyStatement.get(input.sessionKey) as
@@ -115,6 +174,21 @@ export function createRepositories(db: TaoqibaoDb) {
 
     appendMessage(input: AppendMessageInput): void {
       appendMessageTransaction(input);
+    },
+
+    insertEvent(input: InsertEventInput): void {
+      insertEventStatement.run({
+        ...input,
+        taskId: input.taskId ?? null,
+        sessionId: input.sessionId ?? null,
+      });
+    },
+
+    insertOutboxOnce(input: InsertOutboxOnceInput): void {
+      insertOutboxOnceStatement.run({
+        ...input,
+        nowMs: Date.now(),
+      });
     },
 
     searchMessages(query: string): SearchMessageResult[] {
