@@ -19,9 +19,14 @@ export type ExternalChatClientOptions = {
 type ChatCompletionResponse = {
   choices?: Array<{
     message?: {
-      content?: string | null;
+      content?: unknown;
     };
   }>;
+};
+
+type TextContentPart = {
+  type: "text";
+  text: string;
 };
 
 export class ExternalChatClient {
@@ -63,16 +68,17 @@ export class ExternalChatClient {
       );
 
       if (!response.ok) {
-        const bodyText = await response.text();
         throw new Error(
           this.sanitizeMessage(
-            `External chat request failed with ${response.status} ${response.statusText}: ${bodyText}`,
+            `External chat request failed with ${response.status} ${response.statusText}: provider request failed`,
           ),
         );
       }
 
       const payload = (await response.json()) as ChatCompletionResponse;
-      const content = payload.choices?.[0]?.message?.content?.trim();
+      const content = this.extractAssistantContent(
+        payload.choices?.[0]?.message?.content,
+      );
 
       if (!content) {
         throw new Error("External chat response did not include assistant content");
@@ -95,6 +101,40 @@ export class ExternalChatClient {
   }
 
   private sanitizeMessage(message: string): string {
+    if (!this.apiKey) {
+      return message;
+    }
+
     return message.split(this.apiKey).join("[REDACTED]");
+  }
+
+  private extractAssistantContent(content: unknown): string {
+    if (typeof content === "string") {
+      return content.trim();
+    }
+
+    if (Array.isArray(content)) {
+      const text = content
+        .filter((part): part is TextContentPart => this.isTextContentPart(part))
+        .map((part) => part.text.trim())
+        .filter((part) => part.length > 0)
+        .join(" ")
+        .trim();
+
+      if (text) {
+        return text;
+      }
+    }
+
+    throw new Error("Model response did not contain plain text");
+  }
+
+  private isTextContentPart(part: unknown): part is TextContentPart {
+    if (!part || typeof part !== "object") {
+      return false;
+    }
+
+    const candidate = part as { type?: unknown; text?: unknown };
+    return candidate.type === "text" && typeof candidate.text === "string";
   }
 }
