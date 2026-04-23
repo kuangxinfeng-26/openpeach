@@ -27,8 +27,18 @@ interface SearchMessageRow {
   text: string;
 }
 
+interface SessionKeyRow {
+  session_id: string;
+}
+
 export function createRepositories(db: TaoqibaoDb) {
-  const upsertSessionStatement = db.prepare(`
+  const findSessionByKeyStatement = db.prepare(`
+    SELECT session_id
+    FROM sessions
+    WHERE session_key = ?
+  `);
+
+  const insertSessionStatement = db.prepare(`
     INSERT INTO sessions (
       session_id,
       session_key,
@@ -38,8 +48,16 @@ export function createRepositories(db: TaoqibaoDb) {
       updated_at_ms
     )
     VALUES (@sessionId, @sessionKey, @familyId, @coreAgentId, @nowMs, @nowMs)
-    ON CONFLICT(session_key) DO UPDATE SET
-      updated_at_ms = excluded.updated_at_ms
+  `);
+
+  const updateSessionStatement = db.prepare(`
+    UPDATE sessions
+    SET
+      family_id = @familyId,
+      core_agent_id = @coreAgentId,
+      updated_at_ms = @nowMs
+    WHERE session_key = @sessionKey
+      AND session_id = @sessionId
   `);
 
   const appendMessageStatement = db.prepare(`
@@ -60,6 +78,7 @@ export function createRepositories(db: TaoqibaoDb) {
 
   const appendMessageTransaction = db.transaction((input: AppendMessageInput) => {
     appendMessageStatement.run(input);
+    // Phase 0 assumes append-only messages and stores a prefix-searchable FTS row per message.
     appendMessageFtsStatement.run(input);
   });
 
@@ -72,10 +91,26 @@ export function createRepositories(db: TaoqibaoDb) {
 
   return {
     upsertSession(input: UpsertSessionInput): void {
-      upsertSessionStatement.run({
+      const existing = findSessionByKeyStatement.get(input.sessionKey) as
+        | SessionKeyRow
+        | undefined;
+      const values = {
         ...input,
         nowMs: Date.now(),
-      });
+      };
+
+      if (!existing) {
+        insertSessionStatement.run(values);
+        return;
+      }
+
+      if (existing.session_id !== input.sessionId) {
+        throw new Error(
+          `sessionKey already exists with different sessionId: ${input.sessionKey}`,
+        );
+      }
+
+      updateSessionStatement.run(values);
     },
 
     appendMessage(input: AppendMessageInput): void {

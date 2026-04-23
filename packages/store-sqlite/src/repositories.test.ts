@@ -17,8 +17,7 @@ describe("createRepositories", () => {
   });
 
   it("searches appended session messages with FTS5", () => {
-    dir = mkdtempSync(join(tmpdir(), "taoqibao-store-"));
-    const db = openTaoqibaoDb(join(dir, "state.db"));
+    const db = openTestDb();
 
     try {
       migrate(db);
@@ -47,4 +46,59 @@ describe("createRepositories", () => {
       db.close();
     }
   });
+
+  it("rejects a session key reused with a different session id", () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repo = createRepositories(db);
+      const sessionKey =
+        "family:main/agent:main/channel:telegram/account:bot-main/peer:456/scene:default/thread:dm";
+
+      repo.upsertSession({
+        sessionId: "session-1",
+        sessionKey,
+        familyId: "main",
+        coreAgentId: "main",
+      });
+
+      expect(() =>
+        repo.upsertSession({
+          sessionId: "session-2",
+          sessionKey,
+          familyId: "main",
+          coreAgentId: "main",
+        }),
+      ).toThrow(/sessionKey.*different sessionId/i);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("rejects appending a message for a missing session", () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repo = createRepositories(db);
+
+      expect(() =>
+        repo.appendMessage({
+          messageId: "message-1",
+          sessionId: "missing-session",
+          role: "user",
+          text: "客厅灯测试",
+          timestampMs: 1_710_000_000_000,
+        }),
+      ).toThrow(/foreign key/i);
+    } finally {
+      db.close();
+    }
+  });
+
+  function openTestDb() {
+    dir = mkdtempSync(join(tmpdir(), "taoqibao-store-"));
+    return openTaoqibaoDb(join(dir, "state.db"));
+  }
 });
