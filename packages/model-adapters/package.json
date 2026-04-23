@@ -1,0 +1,8 @@
+{
+  "name": "@taoqibao/model-adapters",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/packages/model-adapters/src/index.js",
+  "types": "dist/packages/model-adapters/src/index.d.ts"
+}

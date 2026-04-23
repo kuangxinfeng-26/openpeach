@@ -1,0 +1,8 @@
+{
+  "name": "@taoqibao/event-bus",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/packages/event-bus/src/index.js",
+  "types": "dist/packages/event-bus/src/index.d.ts"
+}

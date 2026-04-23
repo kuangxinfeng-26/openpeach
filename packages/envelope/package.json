@@ -1,0 +1,8 @@
+{
+  "name": "@taoqibao/envelope",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/packages/envelope/src/index.js",
+  "types": "dist/packages/envelope/src/index.d.ts"
+}
