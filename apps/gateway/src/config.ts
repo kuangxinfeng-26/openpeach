@@ -19,7 +19,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
   const coreAgentId = requireMainAgentId(env.TAOQIBAO_CORE_AGENT_ID);
 
   return {
-    stateDbPath: env.TAOQIBAO_STATE_DB?.trim() || join(homedir(), ".taoqibao", "state.db"),
+    stateDbPath: resolveStateDbPath(env),
     familyId: requireEnv(env, "TAOQIBAO_FAMILY_ID"),
     coreAgentId,
     ownerTelegramUserIds: splitCsv(
@@ -36,6 +36,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     ),
     logLevel: requireEnv(env, "TAOQIBAO_LOG_LEVEL"),
   };
+}
+
+export function resolveStateDbPath(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const rawValue = env.TAOQIBAO_STATE_DB?.trim();
+  if (!rawValue) {
+    return join(homedir(), ".taoqibao", "state.db");
+  }
+
+  return expandHomePath(rawValue);
 }
 
 function requireEnv(
@@ -78,4 +89,20 @@ function requireMainAgentId(value: string | undefined): "main" {
   }
 
   return "main";
+}
+
+function expandHomePath(value: string): string {
+  const prefixes = ["$HOME/", "$HOME\\", "~/", "~\\"];
+
+  for (const prefix of prefixes) {
+    if (value.startsWith(prefix)) {
+      return join(homedir(), value.slice(prefix.length));
+    }
+  }
+
+  if (value === "$HOME" || value === "~") {
+    return homedir();
+  }
+
+  return value;
 }

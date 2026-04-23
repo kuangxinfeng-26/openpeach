@@ -1,0 +1,16 @@
+[Unit]
+Description=Taoqibao Phase 0 Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/taoqibao
+EnvironmentFile=/opt/taoqibao/.env
+ExecStart=/usr/bin/npm run dev
+Restart=on-failure
+RestartSec=5
+User=taoqibao
+
+[Install]
+WantedBy=multi-user.target
