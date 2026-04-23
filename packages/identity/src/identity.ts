@@ -6,14 +6,24 @@ type MinimalEnvelope = {
   chatId: string;
 };
 
-export type ResolvedIdentity = {
-  allowed: boolean;
+type AllowedIdentity = {
+  allowed: true;
   channelIdentityId: string;
-  personId?: string;
+  personId: string;
   familyId: string;
-  role: "owner" | "unknown";
-  reason?: string;
+  role: "owner";
 };
+
+type DeniedIdentity = {
+  allowed: false;
+  channelIdentityId: string;
+  familyId: string;
+  role: "unknown";
+  reason: string;
+  personId?: never;
+};
+
+export type ResolvedIdentity = AllowedIdentity | DeniedIdentity;
 
 export function resolveIdentity(
   envelope: MinimalEnvelope,
