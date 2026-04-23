@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { ResolvedIdentity } from "./identity.js";
 import { resolveIdentity } from "./identity.js";
 
 const envelope = {
@@ -25,8 +24,12 @@ describe("resolveIdentity", () => {
       familyId: "main",
     });
 
-    type AllowedIdentity = Extract<ResolvedIdentity, { allowed: true }>;
-    const personId: AllowedIdentity["personId"] = identity.personId;
+    expect(identity.allowed).toBe(true);
+    if (!identity.allowed) {
+      throw new Error("Expected identity to be allowed");
+    }
+
+    const personId: string = identity.personId;
     expect(personId).toBe("person:telegram:456");
 
     expect(identity).toMatchObject({
