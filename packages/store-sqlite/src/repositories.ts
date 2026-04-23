@@ -38,6 +38,14 @@ export interface SearchMessageResult {
   text: string;
 }
 
+export interface TaskRepositoryPacket {
+  taskId: string;
+  objective: string;
+  sourceSessionId: string;
+  targetAgent: string;
+  executionMode: string;
+}
+
 interface SearchMessageRow {
   message_id: string;
   session_id: string;
@@ -46,6 +54,11 @@ interface SearchMessageRow {
 
 interface SessionKeyRow {
   session_id: string;
+}
+
+interface TaskRow {
+  task_id: string;
+  status: string;
 }
 
 export function createRepositories(db: TaoqibaoDb) {
@@ -149,6 +162,42 @@ export function createRepositories(db: TaoqibaoDb) {
     ON CONFLICT(idempotency_key) DO NOTHING
   `);
 
+  const insertTaskStatement = db.prepare(`
+    INSERT INTO tasks (
+      task_id,
+      source_session_id,
+      target_agent,
+      execution_mode,
+      status,
+      objective,
+      created_at_ms,
+      updated_at_ms
+    )
+    VALUES (
+      @taskId,
+      @sourceSessionId,
+      @targetAgent,
+      @executionMode,
+      @status,
+      @objective,
+      @nowMs,
+      @nowMs
+    )
+  `);
+
+  const updateTaskStatusStatement = db.prepare(`
+    UPDATE tasks
+    SET status = @status,
+        updated_at_ms = @nowMs
+    WHERE task_id = @taskId
+  `);
+
+  const getTaskStatement = db.prepare(`
+    SELECT task_id, status
+    FROM tasks
+    WHERE task_id = ?
+  `);
+
   return {
     upsertSession(input: UpsertSessionInput): void {
       const existing = findSessionByKeyStatement.get(input.sessionKey) as
@@ -192,6 +241,69 @@ export function createRepositories(db: TaoqibaoDb) {
       });
     },
 
+    createTask(
+      packet: TaskRepositoryPacket,
+      status: "created" | "admitted",
+    ): void {
+      const existing = getTask(packet.taskId);
+      if (existing) {
+        if (existing.status === status) {
+          return;
+        }
+        if (existing.status !== "created" || status !== "admitted") {
+          throw new Error(
+            `invalid task status transition: ${existing.status} -> ${status}`,
+          );
+        }
+
+        updateTaskStatusStatement.run({
+          taskId: packet.taskId,
+          status,
+          nowMs: Date.now(),
+        });
+        return;
+      }
+
+      insertTaskStatement.run({
+        ...packet,
+        status,
+        nowMs: Date.now(),
+      });
+    },
+
+    updateTaskStatus(
+      taskId: string,
+      status: "running" | "succeeded" | "failed",
+    ): void {
+      const existing = getTask(taskId);
+      if (!existing) {
+        throw new Error(`task not found: ${taskId}`);
+      }
+      if (!isAllowedTaskTransition(existing.status, status)) {
+        throw new Error(
+          `invalid task status transition: ${existing.status} -> ${status}`,
+        );
+      }
+
+      updateTaskStatusStatement.run({
+        taskId,
+        status,
+        nowMs: Date.now(),
+      });
+    },
+
+    getTask(taskId: string): { taskId: string; status: string } | undefined {
+      const row = getTask(taskId);
+      if (!row) {
+        return undefined;
+      }
+
+      return {
+        taskId: row.task_id,
+        status: row.status,
+      };
+    },
+
     searchMessages(query: string): SearchMessageResult[] {
       return searchMessagesStatement.all(toFtsPrefixQuery(query)).map((row) => {
         const result = row as SearchMessageRow;
@@ -204,6 +316,10 @@ export function createRepositories(db: TaoqibaoDb) {
       });
     },
   };
+
+  function getTask(taskId: string): TaskRow | undefined {
+    return getTaskStatement.get(taskId) as TaskRow | undefined;
+  }
 }
 
 function toFtsPrefixQuery(query: string): string {
@@ -217,4 +333,11 @@ function toFtsPrefixQuery(query: string): string {
   }
 
   return tokens.map((token) => `"${token.replaceAll('"', '""')}"*`).join(" ");
+}
+
+function isAllowedTaskTransition(from: string, to: string): boolean {
+  return (
+    (from === "admitted" && to === "running") ||
+    (from === "running" && (to === "succeeded" || to === "failed"))
+  );
 }
