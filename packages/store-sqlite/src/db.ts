@@ -2,9 +2,9 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-export type TaoqibaoDb = Database.Database;
+export type OpenPeachDb = Database.Database;
 
-export function openTaoqibaoDb(path: string): TaoqibaoDb {
+export function openPeachDb(path: string): OpenPeachDb {
   mkdirSync(dirname(path), { recursive: true });
 
   const db = new Database(path);

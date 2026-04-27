@@ -5,6 +5,8 @@ coverage/
 .env.*
 !.env.example
 *.log
+.openpeach/*.local.toml
+deploy/mihomo/*.local.env
 
 _sources/
 generated/
@@ -15,3 +17,5 @@ generated/
 *.db
 *.db-shm
 *.db-wal
+
+.tmp/

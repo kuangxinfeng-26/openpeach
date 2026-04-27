@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { HumanEnvelope } from "../../envelope/src/index.js";
-import type { TaoqibaoEvent } from "../../event-bus/src/index.js";
+import type { OpenPeachEvent } from "../../event-bus/src/index.js";
 import { getOrCreateSession } from "../../session-kernel/src/index.js";
 import {
   createRepositories,
   migrate,
-  openTaoqibaoDb,
+  openPeachDb,
 } from "../../store-sqlite/src/index.js";
 import { admitTask } from "../../task-engine/src/index.js";
 import { MainAgentRuntime } from "./main-agent.js";
@@ -39,7 +39,7 @@ describe("MainAgentRuntime", () => {
         scene: "default",
       });
       const envelope = createEnvelope({
-        text: "今天想聊聊天",
+        text: "chat with me today",
         messageId: "tg-msg-1",
       });
       const decision = admitTask({
@@ -54,13 +54,13 @@ describe("MainAgentRuntime", () => {
       const modelCalls: Array<
         Array<{ role: "system" | "user" | "assistant"; content: string }>
       > = [];
-      const events: TaoqibaoEvent[] = [];
+      const events: OpenPeachEvent[] = [];
       const runtime = new MainAgentRuntime({
         repositories,
         model: {
           async complete(messages) {
             modelCalls.push(messages);
-            return "当然可以，我们慢慢聊。";
+            return "Sure, we can take it slowly.";
           },
         },
         emit(event) {
@@ -75,7 +75,7 @@ describe("MainAgentRuntime", () => {
       });
 
       expect(result).toEqual({
-        replyText: "当然可以，我们慢慢聊。",
+        replyText: "Sure, we can take it slowly.",
         outboxId: "outbox:telegram:tg-msg-1",
       });
 
@@ -98,12 +98,12 @@ describe("MainAgentRuntime", () => {
         {
           message_id: "user:tg-msg-1",
           role: "user",
-          text: "今天想聊聊天",
+          text: "chat with me today",
         },
         {
           message_id: "assistant:tg-msg-1",
           role: "assistant",
-          text: "当然可以，我们慢慢聊。",
+          text: "Sure, we can take it slowly.",
         },
       ]);
 
@@ -112,11 +112,11 @@ describe("MainAgentRuntime", () => {
         {
           role: "system",
           content:
-            "你是淘气包的 main agent，负责温和、可靠地陪伴用户，并在 Phase 0 中只处理普通对话和显式历史检索。不要假装已经接入家庭设备、微信、摄像头或 AI 玩具。",
+            "You are OpenPeach main agent. Be warm, reliable, and honest. In Phase 0, handle normal conversation and explicit history lookup only. Do not pretend that home devices, WeChat, cameras, or AI toys are already connected.",
         },
         {
           role: "user",
-          content: "今天想聊聊天",
+          content: "chat with me today",
         },
       ]);
 
@@ -146,7 +146,7 @@ describe("MainAgentRuntime", () => {
         target_ref: "456",
         payload_json: JSON.stringify({
           chatId: "456",
-          text: "当然可以，我们慢慢聊。",
+          text: "Sure, we can take it slowly.",
           replyToMessageId: "tg-msg-1",
         }),
         status: "pending",
@@ -162,7 +162,7 @@ describe("MainAgentRuntime", () => {
           type: "task.created",
           sessionId: session.sessionId,
           taskId: decision.task!.taskId,
-          payload: { objective: "今天想聊聊天" },
+          payload: { objective: "chat with me today" },
         },
         {
           type: "task.completed",
@@ -199,7 +199,7 @@ describe("MainAgentRuntime", () => {
       });
 
       const envelope = createEnvelope({
-        text: "上次我们之前聊到什么历史内容？",
+        text: "last time before, what history did we discuss?",
         messageId: "tg-msg-history",
       });
       const decision = admitTask({
@@ -219,48 +219,48 @@ describe("MainAgentRuntime", () => {
         model: {
           async complete(messages) {
             modelCalls.push(messages);
-            return "我们之前聊过想去公园。";
+            return "We talked about going to the park before.";
           },
         },
         emit() {},
         sessionSearch(query) {
-          expect(query).toBe("上次");
+          expect(query).toBe("last time");
 
           return [
             {
               messageId: "history-1",
               sessionId: session.sessionId,
-              snippet: "之前第1次聊天提到想去公园",
+              snippet: "Previous chat 1 mentioned going to the park",
             },
             {
               messageId: "history-2-other-session",
               sessionId: "different-session",
-              snippet: "这条不该进入当前会话上下文",
+              snippet: "This should not enter current session context",
             },
             {
               messageId: "history-3",
               sessionId: session.sessionId,
-              snippet: "之前第3次聊天提到想去公园",
+              snippet: "Previous chat 3 mentioned going to the park",
             },
             {
               messageId: "history-4",
               sessionId: session.sessionId,
-              snippet: "之前第4次聊天提到想去公园",
+              snippet: "Previous chat 4 mentioned going to the park",
             },
             {
               messageId: "history-5",
               sessionId: session.sessionId,
-              snippet: "之前第5次聊天提到想去公园",
+              snippet: "Previous chat 5 mentioned going to the park",
             },
             {
               messageId: "history-6",
               sessionId: session.sessionId,
-              snippet: "之前第6次聊天提到想去公园",
+              snippet: "Previous chat 6 mentioned going to the park",
             },
             {
               messageId: "history-7",
               sessionId: session.sessionId,
-              snippet: "之前第7次聊天提到想去公园",
+              snippet: "Previous chat 7 mentioned going to the park",
             },
           ];
         },
@@ -276,13 +276,13 @@ describe("MainAgentRuntime", () => {
       expect(modelCalls[0]?.[1]).toEqual({
         role: "user",
         content: [
-          "用户当前消息：上次我们之前聊到什么历史内容？",
-          "检索到的当前会话历史：",
-          "[1] history-1: 之前第1次聊天提到想去公园",
-          "[2] history-3: 之前第3次聊天提到想去公园",
-          "[3] history-4: 之前第4次聊天提到想去公园",
-          "[4] history-5: 之前第5次聊天提到想去公园",
-          "[5] history-6: 之前第6次聊天提到想去公园",
+          "Current user message: last time before, what history did we discuss?",
+          "Relevant history snippets:",
+          "[1] history-1: Previous chat 1 mentioned going to the park",
+          "[2] history-3: Previous chat 3 mentioned going to the park",
+          "[3] history-4: Previous chat 4 mentioned going to the park",
+          "[4] history-5: Previous chat 5 mentioned going to the park",
+          "[5] history-6: Previous chat 6 mentioned going to the park",
         ].join("\n"),
       });
     } finally {
@@ -306,7 +306,7 @@ describe("MainAgentRuntime", () => {
         scene: "default",
       });
       const envelope = createEnvelope({
-        text: "再试一次",
+        text: "try again",
         messageId: "tg-msg-replay",
       });
       const decision = admitTask({
@@ -322,7 +322,7 @@ describe("MainAgentRuntime", () => {
         messageId: "user:tg-msg-replay",
         sessionId: session.sessionId,
         role: "user",
-        text: "再试一次",
+        text: "try again",
         timestampMs: envelope.timestampMs,
       });
       repositories.createTask(decision.task!, "created");
@@ -332,7 +332,7 @@ describe("MainAgentRuntime", () => {
         messageId: "assistant:tg-msg-replay",
         sessionId: session.sessionId,
         role: "assistant",
-        text: "这是上次已经生成的回复。",
+        text: "This reply was already generated last time.",
         timestampMs: envelope.timestampMs,
       });
 
@@ -353,7 +353,7 @@ describe("MainAgentRuntime", () => {
       });
 
       expect(result).toEqual({
-        replyText: "这是上次已经生成的回复。",
+        replyText: "This reply was already generated last time.",
         outboxId: "outbox:telegram:tg-msg-replay",
       });
 
@@ -386,7 +386,7 @@ describe("MainAgentRuntime", () => {
         outbox_id: "outbox:telegram:tg-msg-replay",
         payload_json: JSON.stringify({
           chatId: "456",
-          text: "这是上次已经生成的回复。",
+          text: "This reply was already generated last time.",
           replyToMessageId: "tg-msg-replay",
         }),
         status: "pending",
@@ -412,7 +412,7 @@ describe("MainAgentRuntime", () => {
         scene: "default",
       });
       const envelope = createEnvelope({
-        text: "你还在吗",
+        text: "are you still there",
         messageId: "tg-msg-fail",
       });
       const decision = admitTask({
@@ -424,7 +424,7 @@ describe("MainAgentRuntime", () => {
 
       expect(decision.task).toBeDefined();
 
-      const events: TaoqibaoEvent[] = [];
+      const events: OpenPeachEvent[] = [];
       const runtime = new MainAgentRuntime({
         repositories,
         model: {
@@ -455,7 +455,7 @@ describe("MainAgentRuntime", () => {
           type: "task.created",
           sessionId: session.sessionId,
           taskId: decision.task!.taskId,
-          payload: { objective: "你还在吗" },
+          payload: { objective: "are you still there" },
         },
         {
           type: "task.failed",
@@ -485,7 +485,7 @@ describe("MainAgentRuntime", () => {
         scene: "default",
       });
       const envelope = createEnvelope({
-        text: "帮我继续刚才那条",
+        text: "please continue that previous item",
         messageId: "tg-msg-revive",
       });
       const decision = admitTask({
@@ -520,7 +520,7 @@ describe("MainAgentRuntime", () => {
         repositories: flakyRepositories,
         model: {
           async complete() {
-            return "这是第一次已经生成的回复。";
+            return "This reply was generated the first time.";
           },
         },
         emit() {},
@@ -539,7 +539,7 @@ describe("MainAgentRuntime", () => {
         status: "failed",
       });
       expect(repositories.getMessageById("assistant:tg-msg-revive")?.text).toBe(
-        "这是第一次已经生成的回复。",
+        "This reply was generated the first time.",
       );
 
       const secondRuntime = new MainAgentRuntime({
@@ -559,7 +559,7 @@ describe("MainAgentRuntime", () => {
       });
 
       expect(result).toEqual({
-        replyText: "这是第一次已经生成的回复。",
+        replyText: "This reply was generated the first time.",
         outboxId: "outbox:telegram:tg-msg-revive",
       });
       expect(repositories.getTask(decision.task!.taskId)).toEqual({
@@ -572,8 +572,8 @@ describe("MainAgentRuntime", () => {
   });
 
   function openTestDb() {
-    dir = mkdtempSync(join(tmpdir(), "taoqibao-runtime-"));
-    return openTaoqibaoDb(join(dir, "state.db"));
+    dir = mkdtempSync(join(tmpdir(), "openpeach-runtime-"));
+    return openPeachDb(join(dir, "state.db"));
   }
 });
 

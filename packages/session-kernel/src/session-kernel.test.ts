@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { openTaoqibaoDb, migrate, createRepositories } from "../../store-sqlite/src/index.js";
+import { openPeachDb, migrate, createRepositories } from "../../store-sqlite/src/index.js";
 import { buildSessionKey } from "./session-key.js";
 import { getOrCreateSession } from "./session-service.js";
 import { sessionSearch } from "./session-search.js";
@@ -106,15 +106,15 @@ describe("session kernel", () => {
         messageId: "message-1",
         sessionId: session.sessionId,
         role: "user",
-        text: "客厅灯测试",
+        text: "living room light test",
         timestampMs: 1_710_000_000_000,
       });
 
-      expect(sessionSearch(repo, "客厅灯")).toEqual([
+      expect(sessionSearch(repo, "living room")).toEqual([
         {
           messageId: "message-1",
           sessionId: session.sessionId,
-          snippet: "客厅灯测试",
+          snippet: "living room light test",
         },
       ]);
     } finally {
@@ -123,7 +123,7 @@ describe("session kernel", () => {
   });
 
   function openTestDb() {
-    dir = mkdtempSync(join(tmpdir(), "taoqibao-session-kernel-"));
-    return openTaoqibaoDb(join(dir, "state.db"));
+    dir = mkdtempSync(join(tmpdir(), "openpeach-session-kernel-"));
+    return openPeachDb(join(dir, "state.db"));
   }
 });

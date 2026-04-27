@@ -128,24 +128,24 @@ flowchart LR
 
 全部可通过 `npm` 安装和启动：
 
-- `taoqibao-gateway`
+- `openpeach-gateway`
   - 微信 / Telegram 接入
   - Webhook / polling / 消息标准化
-- `taoqibao-router`
+- `openpeach-router`
   - 会话归属
   - 用户识别
   - agent 选择
   - 任务化判定
-- `taoqibao-runtime`
+- `openpeach-runtime`
   - prompt 组装
   - tool / skill 调度
   - agent run loop
-- `taoqibao-task-engine`
+- `openpeach-task-engine`
   - 任务状态机
   - 队列
   - checkpoint
   - retry / resume
-- `taoqibao-store`
+- `openpeach-store`
   - SQLite
   - FTS5
   - 向量索引
@@ -153,13 +153,13 @@ flowchart LR
 
 ### 5.2 可选 sidecar
 
-- `taoqibao-asr-local`
+- `openpeach-asr-local`
   - 本地语音转文字
-- `taoqibao-tts-local`
+- `openpeach-tts-local`
   - 本地中文语音播报
-- `taoqibao-device-bridge`
+- `openpeach-device-bridge`
   - 智能灯、摄像头、Home Assistant、MQTT
-- `taoqibao-lab-worker`
+- `openpeach-lab-worker`
   - `D:` 盘 AI 玩具项目的运行代理
 
 原则：
@@ -167,6 +167,72 @@ flowchart LR
 - 没 sidecar 也能跑文字版家庭助理
 - 需要语音或设备时再按需加载
 - 弱硬件默认只跑核心服务 + SQLite
+
+### 5.3 OpenClaw 式运行时工作目录
+
+淘气包不能只把 agent 配置写在代码仓库里。参考 OpenClaw 的 agent workspace 思路，淘气包需要区分“仓库模板”和“真实运行时工作目录”。
+
+仓库内的 `.openpeach/` 只放默认模板，例如：
+
+```text
+.openpeach/
+  agents/
+    main/agent.md
+    home/agent.md
+    lab/agent.md
+  users/
+    owner/user.md
+  model.runtime.example.toml
+```
+
+Linux 运行时的真实工作目录放在用户或服务账号 home 下：
+
+```text
+~/.openpeach/families/main/
+  README.md
+  agents/
+    main/
+      agent.md
+      workspace/
+      state/
+      sessions/
+      artifacts/
+      skills/
+    home/
+      agent.md
+      workspace/
+      state/
+      sessions/
+      artifacts/
+      skills/
+    lab/
+      agent.md
+      workspace/
+      state/
+      sessions/
+      artifacts/
+      skills/
+  users/
+    owner/user.md
+  household/
+  memory/
+    private/
+    shared/
+    device/
+    project/
+    restricted/
+  tasks/
+  outbox/
+  logs/
+```
+
+关键规则：
+
+- `.openpeach/agents/*/agent.md` 是仓库模板，不是运行时真实人格。
+- `~/.openpeach/families/<family_id>/agents/*/agent.md` 才是运行时真实 agent 配置。
+- installer 或首次启动只在目标文件不存在时复制模板，不能覆盖用户已经调过的人格文件。
+- 旧的 `~/.openpeach/state.db` 可作为 Phase 0 兼容路径，但长期应迁移到 `~/.openpeach/families/main/state.db` 或等价 workspace 内路径。
+- `AGENTS.md` 是给开发者/编码 agent 看的工程准则，不是淘气包运行时人格文件。
 
 ## 6. Agent 体系
 
@@ -212,6 +278,29 @@ flowchart LR
 - 每个 agent 有独立 `session lane`
 - 共享同一个“家庭记忆图谱”，但读取范围可控
 - `lab` 默认不能直接写入正式家庭自动化规则
+
+### 6.5 Agent 配置文件
+
+每个长期核心 agent 都要有自己的 `agent.md`，用于描述身份、职责、边界、可见记忆域和语气。运行时 prompt 不应该长期写死在 TypeScript 里。
+
+第一版文件约定：
+
+```text
+~/.openpeach/families/main/agents/main/agent.md
+~/.openpeach/families/main/agents/home/agent.md
+~/.openpeach/families/main/agents/lab/agent.md
+~/.openpeach/families/main/users/owner/user.md
+```
+
+加载顺序建议：
+
+1. 读取全局工程/安全约束。
+2. 读取当前 core agent 的 `agent.md`。
+3. 根据身份权限读取对应 `user.md` 或 household profile。
+4. 读取会话摘要、相关记忆和任务上下文。
+5. 拼装最终 system prompt 与 turn prompt。
+
+`user.md` 不等于长期记忆库。它只保存稳定画像和偏好入口；可检索、可审计、可降级的事实仍然要进入 SQLite 记忆表和 memory candidate 机制。
 
 ## 7. 通道与多用户模型
 
@@ -559,7 +648,7 @@ Hermes 的 skill / plugin 更偏“人工安装与手工组织”。
 路径约束：
 
 - 你当前开发机上的 `D:` 盘项目，在 Linux 部署时不能保留盘符语义
-- 淘气包内部统一记录为 `lab mount`，例如 `/srv/taoqibao/lab-projects/ai-toys`
+- 淘气包内部统一记录为 `lab mount`，例如 `/srv/openpeach/lab-projects/ai-toys`
 - `lab` agent 只认逻辑挂载名和 Linux 实际路径映射
 
 ### 14.3 安全分层
@@ -588,7 +677,7 @@ Hermes 的 skill / plugin 更偏“人工安装与手工组织”。
 仓库形态建议采用 npm workspace：
 
 ```text
-taoqibao/
+openpeach/
   apps/
     gateway/
     api/
@@ -616,6 +705,20 @@ taoqibao/
 - `npm run build`
 - `npm run start:gateway`
 - `systemd` 托管常驻服务
+
+安装初始化还必须做一件事：创建 OpenClaw 式 runtime workspace。
+
+```text
+install-openpeach
+-> 确认 OPENPEACH_HOME，默认 ~/.openpeach
+-> 创建 families/main 目录树
+-> 从仓库 .openpeach/agents 复制 agent.md 模板
+-> 从仓库 .openpeach/users 复制 user.md 模板
+-> 若目标文件已存在则保留用户本地版本
+-> 写入或迁移 state.db / logs / tasks / outbox 路径
+```
+
+这样仓库升级不会覆盖运行时人格，用户也能像 OpenClaw 一样直接进入工作目录查看和调整 agent 配置。
 
 优点：
 
@@ -1263,6 +1366,8 @@ Phase 0 应明确包含：
 
 - Telegram 主通道
 - `main` agent
+- OpenClaw 式 runtime workspace 初始化：`~/.openpeach/families/main/agents/main/agent.md`、`users/owner/user.md`
+- `main` agent prompt 从 runtime `agent.md` 加载，TypeScript 内置 prompt 只作为 fallback
 - 统一 SQLite state.db
 - `logical_session + physical_transcript`
 - `HumanEnvelope`

@@ -1,12 +1,12 @@
 import type { HumanEnvelope } from "../../envelope/src/index.js";
-import type { TaoqibaoEvent } from "../../event-bus/src/index.js";
+import type { OpenPeachEvent } from "../../event-bus/src/index.js";
 import type { SessionContext } from "../../session-kernel/src/index.js";
 import type { TaskPacket } from "../../task-engine/src/index.js";
 
 const SYSTEM_PROMPT =
-  "你是淘气包的 main agent，负责温和、可靠地陪伴用户，并在 Phase 0 中只处理普通对话和显式历史检索。不要假装已经接入家庭设备、微信、摄像头或 AI 玩具。";
+  "You are OpenPeach main agent. Be warm, reliable, and honest. In Phase 0, handle normal conversation and explicit history lookup only. Do not pretend that home devices, WeChat, cameras, or AI toys are already connected.";
 
-const HISTORY_HINT_PATTERNS = ["上次", "之前", "以前", "历史"] as const;
+const HISTORY_HINT_PATTERNS = ["last time", "before", "previous", "history", "continue"] as const;
 
 export type MainAgentRuntimeDeps = {
   repositories: MainAgentRepositories;
@@ -18,7 +18,8 @@ export type MainAgentRuntimeDeps = {
       }>,
     ): Promise<string>;
   };
-  emit: (event: TaoqibaoEvent) => void;
+  emit: (event: OpenPeachEvent) => void;
+  systemPrompt?: string;
   sessionSearch?: (
     query: string,
   ) => Array<{ messageId: string; sessionId: string; snippet: string }>;
@@ -146,7 +147,7 @@ export class MainAgentRuntime {
     return this.deps.model.complete([
       {
         role: "system",
-        content: SYSTEM_PROMPT,
+        content: this.deps.systemPrompt ?? SYSTEM_PROMPT,
       },
       {
         role: "user",
@@ -259,8 +260,8 @@ function buildUserPrompt(
   }
 
   return [
-    `用户当前消息：${text}`,
-    "检索到的当前会话历史：",
+    `Current user message: ${text}`,
+    "Relevant history snippets:",
     ...history.map(
       (item, index) => `[${index + 1}] ${item.messageId}: ${item.snippet}`,
     ),

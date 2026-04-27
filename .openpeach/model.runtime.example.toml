@@ -1,0 +1,12 @@
+# OpenPeach runtime model profile.
+# Keep your real file in .openpeach/model.runtime.local.toml so it stays out of git.
+
+[model]
+base_url = "https://api.example.com/v1"
+model_name = "gpt-5.4"
+timeout_ms = 30000
+
+# Pick exactly one auth source:
+api_key = "replace-me"
+# api_key_env = "OPENAI_API_KEY"
+# api_key_command = "python /path/to/print-key.py"

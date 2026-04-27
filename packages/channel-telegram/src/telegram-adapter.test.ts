@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createTelegramProxyFetch,
   createTelegramAdapter,
   handleTelegramTextMessage,
 } from "./telegram-adapter.js";
@@ -13,10 +14,18 @@ type MockContext = {
     text?: string;
     message_thread_id?: number;
   };
+  replyWithChatAction?: ReturnType<typeof vi.fn>;
   reply: ReturnType<typeof vi.fn>;
 };
 
 type MessageTextHandler = (ctx: MockContext) => Promise<Error | void>;
+const createTextMessage = (message_id = 10) => ({
+  message_id,
+  date: 1_710_000_000,
+  chat: { id: 456, type: "private" as const },
+  from: { id: 456, is_bot: false, first_name: "Owner" },
+  text: "hello",
+});
 type ErrorBoundaryHandler = (error: { error: Error }) => Promise<void> | void;
 
 const { MockBot, botInstances } = vi.hoisted(() => {
@@ -29,7 +38,10 @@ const { MockBot, botInstances } = vi.hoisted(() => {
     readonly stop = vi.fn(async () => {});
     private errorBoundary?: ErrorBoundaryHandler;
 
-    constructor(readonly token: string) {
+    constructor(
+      readonly token: string,
+      readonly config?: { client?: { apiRoot?: string; fetch?: unknown } },
+    ) {
       hoistedBotInstances.push(this);
     }
 
@@ -81,6 +93,7 @@ describe("createTelegramAdapter", () => {
   beforeEach(() => {
     botInstances.length = 0;
     consoleError.mockClear();
+    vi.useRealTimers();
   });
 
   afterEach(() => {
@@ -97,6 +110,7 @@ describe("createTelegramAdapter", () => {
 
     const bot = expectSingleBot();
     const reply = vi.fn(async () => ({}));
+    const replyWithChatAction = vi.fn(async () => true);
 
     await adapter.start();
     await bot.dispatch({
@@ -105,8 +119,9 @@ describe("createTelegramAdapter", () => {
         date: 1_710_000_000,
         chat: { id: 456, type: "private" },
         from: { id: 456, is_bot: false, first_name: "Owner" },
-        text: "  你好，淘气包  ",
+        text: "  hello openpeach  ",
       },
+      replyWithChatAction,
       reply,
     });
     await adapter.stop();
@@ -121,10 +136,231 @@ describe("createTelegramAdapter", () => {
         peerId: "456",
         chatId: "456",
         messageId: "10",
-        text: "你好，淘气包",
+        text: "hello openpeach",
       }),
     );
+    expect(replyWithChatAction).toHaveBeenCalledWith("typing");
+    expect(replyWithChatAction.mock.invocationCallOrder[0]).toBeLessThan(
+      reply.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
     expect(reply).toHaveBeenCalledWith("hello back");
+  });
+
+  it("passes onReplySent through the created bot message handler", async () => {
+    const onEnvelope = vi.fn(async () => ({
+      replyText: "hello back",
+      outboxId: "outbox:telegram:10",
+    }));
+    const onReplySent = vi.fn(async () => {});
+    const reply = vi.fn(async () => ({}));
+
+    createTelegramAdapter({
+      token: "telegram-token",
+      botAccountId: "bot-main",
+      onEnvelope,
+      onReplySent,
+    });
+
+    const bot = expectSingleBot();
+    await bot.dispatch({
+      message: createTextMessage(),
+      reply,
+    });
+
+    expect(reply).toHaveBeenCalledWith("hello back");
+    expect(onReplySent).toHaveBeenCalledWith({
+      outboxId: "outbox:telegram:10",
+    });
+  });
+
+  it("marks the generated outbox message as sent only after Telegram reply succeeds", async () => {
+    const onEnvelope = vi.fn(async () => ({
+      replyText: "hello back",
+      outboxId: "outbox:telegram:10",
+    }));
+    const onReplySent = vi.fn(async () => {});
+    const reply = vi.fn(async () => ({}));
+
+    await handleTelegramTextMessage({
+      token: "telegram-token",
+      botAccountId: "bot-main",
+      onEnvelope,
+      onReplySent,
+      ctx: {
+        message: createTextMessage(),
+        reply,
+      },
+    });
+
+    expect(reply).toHaveBeenCalledWith("hello back");
+    expect(onReplySent).toHaveBeenCalledWith({
+      outboxId: "outbox:telegram:10",
+    });
+  });
+
+  it("does not mark the outbox sent when Telegram reply fails", async () => {
+    const onEnvelope = vi.fn(async () => ({
+      replyText: "hello back",
+      outboxId: "outbox:telegram:10",
+    }));
+    const onReplySent = vi.fn(async () => {});
+    const reply = vi.fn(async () => {
+      throw new Error("telegram upstream rejected telegram-token");
+    });
+
+    const result = await handleTelegramTextMessage({
+      token: "telegram-token",
+      botAccountId: "bot-main",
+      onEnvelope,
+      onReplySent,
+      ctx: {
+        message: createTextMessage(),
+        reply,
+      },
+    });
+
+    expect(result).toBeInstanceOf(Error);
+    expect(onReplySent).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the typing indicator while a long-running turn is still processing", async () => {
+    vi.useFakeTimers();
+
+    let resolveEnvelope:
+      | ((value: { replyText?: string }) => void)
+      | undefined;
+    const onEnvelope = vi.fn(
+      () =>
+        new Promise<{ replyText?: string }>((resolve) => {
+          resolveEnvelope = resolve;
+        }),
+    );
+
+    createTelegramAdapter({
+      token: "telegram-token",
+      botAccountId: "bot-main",
+      onEnvelope,
+    });
+
+    const bot = expectSingleBot();
+    const reply = vi.fn(async () => ({}));
+    const replyWithChatAction = vi.fn(async () => true);
+
+    const dispatchPromise = bot.dispatch({
+      message: {
+        message_id: 16,
+        date: 1_710_000_006,
+        chat: { id: 456, type: "private" },
+        from: { id: 456, is_bot: false, first_name: "Owner" },
+        text: "please think a little longer",
+      },
+      replyWithChatAction,
+      reply,
+    });
+
+    await Promise.resolve();
+    expect(replyWithChatAction).toHaveBeenCalledTimes(1);
+    expect(replyWithChatAction).toHaveBeenNthCalledWith(1, "typing");
+
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(replyWithChatAction).toHaveBeenCalledTimes(2);
+    expect(replyWithChatAction).toHaveBeenNthCalledWith(2, "typing");
+
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(replyWithChatAction).toHaveBeenCalledTimes(3);
+
+    resolveEnvelope?.({ replyText: "finished thinking" });
+    await dispatchPromise;
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(replyWithChatAction).toHaveBeenCalledTimes(3);
+    expect(reply).toHaveBeenCalledWith("finished thinking");
+  });
+
+  it("does not wait for Telegram typing before starting the pipeline", async () => {
+    let resolveTyping: ((value: unknown) => void) | undefined;
+    const typingGate = new Promise((resolve) => {
+      resolveTyping = resolve;
+    });
+    const onEnvelope = vi.fn(async () => ({ replyText: "fast reply" }));
+    const reply = vi.fn(async () => ({}));
+    const replyWithChatAction = vi.fn(() => typingGate);
+
+    const dispatchPromise = handleTelegramTextMessage({
+      token: "telegram-token",
+      botAccountId: "bot-main",
+      onEnvelope,
+      ctx: {
+        message: createTextMessage(17),
+        replyWithChatAction,
+        reply,
+      },
+    });
+
+    await Promise.resolve();
+
+    try {
+      expect(replyWithChatAction).toHaveBeenCalledWith("typing");
+      expect(onEnvelope).toHaveBeenCalledTimes(1);
+    } finally {
+      resolveTyping?.(true);
+      await dispatchPromise;
+    }
+
+    expect(reply).toHaveBeenCalledWith("fast reply");
+  });
+
+  it("passes a custom Telegram API root to the grammY client", () => {
+    createTelegramAdapter({
+      token: "telegram-token",
+      apiRoot: "http://127.0.0.1:8788",
+      botAccountId: "bot-main",
+      onEnvelope: async () => ({ replyText: "hello back" }),
+    });
+
+    const bot = expectSingleBot();
+    expect(bot.config).toEqual({
+      client: {
+        apiRoot: "http://127.0.0.1:8788",
+      },
+    });
+  });
+
+  it("passes a proxy-aware custom fetch to the grammY client when proxy env vars exist", () => {
+    createTelegramAdapter({
+      token: "telegram-token",
+      botAccountId: "bot-main",
+      onEnvelope: async () => ({ replyText: "hello back" }),
+      env: {
+        HTTPS_PROXY: "http://proxy.internal:3128",
+      },
+    });
+
+    const bot = expectSingleBot();
+    expect(bot.config).toEqual({
+      client: {
+        fetch: expect.any(Function),
+      },
+    });
+  });
+
+  it("prefers a custom Telegram API root over auto-wiring proxy fetch", () => {
+    createTelegramAdapter({
+      token: "telegram-token",
+      apiRoot: "http://127.0.0.1:8788",
+      botAccountId: "bot-main",
+      onEnvelope: async () => ({ replyText: "hello back" }),
+      env: {
+        HTTPS_PROXY: "http://proxy.internal:3128",
+      },
+    });
+
+    const bot = expectSingleBot();
+    expect(bot.config).toEqual({
+      client: {
+        apiRoot: "http://127.0.0.1:8788",
+      },
+    });
   });
 
   it("ignores group updates in Phase 0", async () => {
@@ -259,6 +495,40 @@ describe("createTelegramAdapter", () => {
     const loggedText = consoleError.mock.calls.map((call) => call.join(" ")).join("\n");
     expect(loggedText).toContain("Telegram adapter failed");
     expect(loggedText).not.toContain("telegram-token-secret");
+  });
+});
+
+describe("createTelegramProxyFetch", () => {
+  it("bridges non-native abort signals before calling the underlying fetch", async () => {
+    let abortListener: (() => void) | undefined;
+    const forwardedSignals: Array<AbortSignal | undefined> = [];
+    const fakeFetch = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      forwardedSignals.push(init?.signal);
+      return new Response("{}");
+    });
+
+    const proxyFetch = createTelegramProxyFetch(
+      "http://proxy.internal:3128",
+      fakeFetch as unknown as typeof fetch,
+    );
+
+    const foreignSignal = {
+      aborted: false,
+      addEventListener(_type: string, listener: () => void) {
+        abortListener = listener;
+      },
+    } as unknown as AbortSignal;
+
+    await proxyFetch("https://example.com", {
+      signal: foreignSignal,
+    });
+
+    expect(fakeFetch).toHaveBeenCalledTimes(1);
+    expect(forwardedSignals[0]).toBeInstanceOf(AbortSignal);
+    expect(forwardedSignals[0]).not.toBe(foreignSignal);
+
+    abortListener?.();
+    expect(forwardedSignals[0]?.aborted).toBe(true);
   });
 });
 

@@ -10,14 +10,14 @@ describe("ExternalChatClient", () => {
       fetch: async () =>
         new Response(
           JSON.stringify({
-            choices: [{ message: { content: "  hello from Taoqibao  " } }],
+            choices: [{ message: { content: "  hello from OpenPeach  " } }],
           }),
         ),
     });
 
     await expect(
       client.complete([{ role: "user", content: "hello" }]),
-    ).resolves.toBe("hello from Taoqibao");
+    ).resolves.toBe("hello from OpenPeach");
   });
 
   it("throws a sanitized error for non-2xx responses", async () => {
@@ -105,7 +105,7 @@ describe("ExternalChatClient", () => {
                   content: [
                     { type: "text", text: "  hello " },
                     { type: "image_url", image_url: { url: "https://example.test/image.png" } },
-                    { type: "text", text: " Taoqibao  " },
+                    { type: "text", text: " OpenPeach  " },
                   ],
                 },
               },
@@ -116,7 +116,7 @@ describe("ExternalChatClient", () => {
 
     await expect(
       client.complete([{ role: "user", content: "hello" }]),
-    ).resolves.toBe("hello Taoqibao");
+    ).resolves.toBe("hello OpenPeach");
   });
 
   it("throws a controlled error when content is not plain text", async () => {

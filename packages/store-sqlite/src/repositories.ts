@@ -1,4 +1,4 @@
-import type { TaoqibaoDb } from "./db.js";
+import type { OpenPeachDb } from "./db.js";
 
 export interface UpsertSessionInput {
   sessionId: string;
@@ -84,7 +84,7 @@ interface TaskRow {
   status: TaskRepositoryStatus;
 }
 
-export function createRepositories(db: TaoqibaoDb) {
+export function createRepositories(db: OpenPeachDb) {
   const findSessionByKeyStatement = db.prepare(`
     SELECT session_id
     FROM sessions
@@ -191,6 +191,13 @@ export function createRepositories(db: TaoqibaoDb) {
     ON CONFLICT(idempotency_key) DO NOTHING
   `);
 
+  const markOutboxSentStatement = db.prepare(`
+    UPDATE outbox
+    SET status = 'sent',
+        updated_at_ms = @nowMs
+    WHERE outbox_id = @outboxId
+  `);
+
   const insertTaskStatement = db.prepare(`
     INSERT INTO tasks (
       task_id,
@@ -283,6 +290,13 @@ export function createRepositories(db: TaoqibaoDb) {
     insertOutboxOnce(input: InsertOutboxOnceInput): void {
       insertOutboxOnceStatement.run({
         ...input,
+        nowMs: Date.now(),
+      });
+    },
+
+    markOutboxSent(outboxId: string): void {
+      markOutboxSentStatement.run({
+        outboxId,
         nowMs: Date.now(),
       });
     },

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createRepositories,
   migrate,
-  openTaoqibaoDb,
+  openPeachDb,
 } from "../../store-sqlite/src/index.js";
 import { createEventBus } from "./index.js";
 
@@ -172,7 +172,7 @@ describe("event bus", () => {
   });
 
   function openTestDb() {
-    dir = mkdtempSync(join(tmpdir(), "taoqibao-event-bus-"));
-    return openTaoqibaoDb(join(dir, "state.db"));
+    dir = mkdtempSync(join(tmpdir(), "openpeach-event-bus-"));
+    return openPeachDb(join(dir, "state.db"));
   }
 });

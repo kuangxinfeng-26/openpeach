@@ -1,6 +1,6 @@
-import type { TaoqibaoDb } from "./db.js";
+import type { OpenPeachDb } from "./db.js";
 
-export function migrate(db: TaoqibaoDb): void {
+export function migrate(db: OpenPeachDb): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       session_id TEXT PRIMARY KEY,

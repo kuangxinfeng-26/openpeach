@@ -1,9 +1,12 @@
-import "dotenv/config";
 import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { migrate, openTaoqibaoDb } from "../../../packages/store-sqlite/src/index.js";
+import {
+  initializeRuntimeWorkspace,
+  loadAgentProfile,
+} from "../../../packages/runtime/src/index.js";
+import { migrate, openPeachDb } from "../../../packages/store-sqlite/src/index.js";
 import { loadConfig, resolveStateDbPath } from "./config.js";
 
 export type DoctorCheck = {
@@ -11,6 +14,7 @@ export type DoctorCheck = {
     | "node-version"
     | "required-env"
     | "state-db-path"
+    | "runtime-workspace"
     | "fts5-migration"
     | "telegram-token"
     | "model-config";
@@ -48,6 +52,7 @@ export function runDoctor(env: NodeJS.ProcessEnv = process.env): DoctorResult {
   checks.push(checkNodeVersion(process.versions.node));
   checks.push(checkRequiredEnv(env));
   checks.push(checkStateDbPath(env));
+  checks.push(checkRuntimeWorkspace(env));
   checks.push(checkFts5Migration());
   checks.push(checkTelegramToken(env));
   checks.push(checkModelConfig(env));
@@ -126,7 +131,7 @@ function checkStateDbPath(env: NodeJS.ProcessEnv): DoctorCheck {
 
   try {
     mkdirSync(dirname(stateDbPath), { recursive: true });
-    const db = openTaoqibaoDb(stateDbPath);
+    const db = openPeachDb(stateDbPath);
     db.close();
 
     if (!existedBeforeProbe) {
@@ -149,12 +154,42 @@ function checkStateDbPath(env: NodeJS.ProcessEnv): DoctorCheck {
   }
 }
 
+function checkRuntimeWorkspace(env: NodeJS.ProcessEnv): DoctorCheck {
+  try {
+    const config = loadConfig(env);
+    initializeRuntimeWorkspace({
+      openPeachHome: config.openPeachHome,
+      familyId: config.familyId,
+    });
+    const profile = loadAgentProfile({
+      openPeachHome: config.openPeachHome,
+      familyId: config.familyId,
+      agentId: config.coreAgentId,
+    });
+
+    if (profile.length === 0) {
+      throw new Error("main agent profile is empty");
+    }
+
+    return {
+      name: "runtime-workspace",
+      ok: true,
+      detail: "Runtime workspace is initialized",
+    };
+  } catch (error) {
+    return {
+      name: "runtime-workspace",
+      ok: false,
+      detail: `Runtime workspace is not ready: ${safeErrorMessage(error, "Unknown error")}`,
+    };
+  }
+}
 function checkFts5Migration(): DoctorCheck {
   let dir: string | undefined;
 
   try {
-    dir = mkdtempSync(join(tmpdir(), "taoqibao-doctor-"));
-    const db = openTaoqibaoDb(join(dir, "doctor.db"));
+    dir = mkdtempSync(join(tmpdir(), "openpeach-doctor-"));
+    const db = openPeachDb(join(dir, "doctor.db"));
 
     try {
       migrate(db);

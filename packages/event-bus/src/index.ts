@@ -1,8 +1,8 @@
-import type { TaoqibaoEvent } from "./events.js";
+import type { OpenPeachEvent } from "./events.js";
 
 export interface PublishEventInput {
   eventId: string;
-  event: TaoqibaoEvent;
+  event: OpenPeachEvent;
   createdAtMs: number;
 }
 
@@ -32,4 +32,4 @@ export function createEventBus(repository: EventRepository) {
   };
 }
 
-export type { TaoqibaoEvent } from "./events.js";
+export type { OpenPeachEvent } from "./events.js";

@@ -10,7 +10,7 @@ describe("normalizeTelegramMessage", () => {
         date: 1710000000,
         chat: { id: 123, type: "private" },
         from: { id: 456, is_bot: false, first_name: "Owner" },
-        text: "你好，淘气包",
+        text: "浣犲ソ锛屾窐姘斿寘",
       },
     });
 
@@ -19,7 +19,7 @@ describe("normalizeTelegramMessage", () => {
       accountId: "bot-main",
       chatType: "private",
       peerId: "456",
-      text: "你好，淘气包",
+      text: "浣犲ソ锛屾窐姘斿寘",
       messageId: "10",
     });
   });

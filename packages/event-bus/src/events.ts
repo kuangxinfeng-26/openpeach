@@ -1,4 +1,4 @@
-export type TaoqibaoEvent =
+export type OpenPeachEvent =
   | {
       type: "message.received";
       sessionId: string;
@@ -29,4 +29,4 @@ export type TaoqibaoEvent =
       payload: { outboxId: string };
     };
 
-export type { TaoqibaoEvent as Event };
+export type { OpenPeachEvent as Event };

@@ -30,6 +30,7 @@ describe("runDoctor", () => {
         ok: true,
         detail: expect.stringContaining("SQLite DB path is writable"),
       },
+      { name: "runtime-workspace", ok: true, detail: "Runtime workspace is initialized" },
       { name: "fts5-migration", ok: true, detail: "FTS5 migration works in a temporary database" },
       { name: "telegram-token", ok: true, detail: "Telegram bot token is configured" },
       { name: "model-config", ok: true, detail: "Model config is configured" },
@@ -119,14 +120,15 @@ describe("runDoctor", () => {
   function createEnv(
     overrides: Partial<NodeJS.ProcessEnv> = {},
   ): NodeJS.ProcessEnv {
-    dir = mkdtempSync(join(tmpdir(), "taoqibao-doctor-"));
+    dir = mkdtempSync(join(tmpdir(), "openpeach-doctor-"));
 
     return {
+      OPENPEACH_HOME: join(dir, "openpeach-home"),
       TAOQIBAO_STATE_DB: join(dir, "state.db"),
       TAOQIBAO_FAMILY_ID: "main",
       TAOQIBAO_CORE_AGENT_ID: "main",
       TAOQIBAO_OWNER_TELEGRAM_USER_IDS: "123456789",
-      TELEGRAM_BOT_TOKEN: "123456:secret-token",
+      TELEGRAM_BOT_TOKEN: "bot-token-placeholder",
       TAOQIBAO_MODEL_BASE_URL: "https://api.example.com/v1",
       TAOQIBAO_MODEL_API_KEY: "super-secret-api-key",
       TAOQIBAO_MODEL_NAME: "gpt-test",

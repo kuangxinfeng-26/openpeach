@@ -9,7 +9,7 @@ import { MainAgentRuntime } from "../../../packages/runtime/src/index.js";
 import {
   createRepositories,
   migrate,
-  openTaoqibaoDb,
+  openPeachDb,
 } from "../../../packages/store-sqlite/src/index.js";
 import { loadConfig } from "./config.js";
 import { handleHumanEnvelope } from "./pipeline.js";
@@ -52,15 +52,15 @@ describe("handleHumanEnvelope", () => {
       const runtime = createRuntime(repositories, {
         async complete(messages) {
           modelCalls += 1;
-          expect(messages[1]?.content).toBe("今天想聊聊天");
-          return "当然可以，我们慢慢聊。";
+          expect(messages[1]?.content).toBe("chat with me today");
+          return "Sure, we can take it slowly.";
         },
       });
 
       const result = await handleHumanEnvelope({
         envelope: createEnvelope({
           messageId: "tg-msg-1",
-          text: "今天想聊聊天",
+          text: "chat with me today",
         }),
         deps: {
           config: {
@@ -74,7 +74,8 @@ describe("handleHumanEnvelope", () => {
 
       expect(result).toEqual({
         ok: true,
-        replyText: "当然可以，我们慢慢聊。",
+        replyText: "Sure, we can take it slowly.",
+        outboxId: "outbox:telegram:tg-msg-1",
       });
       expect(modelCalls).toBe(1);
 
@@ -100,7 +101,7 @@ describe("handleHumanEnvelope", () => {
         target_ref: "456",
         payload_json: JSON.stringify({
           chatId: "456",
-          text: "当然可以，我们慢慢聊。",
+          text: "Sure, we can take it slowly.",
           replyToMessageId: "tg-msg-1",
         }),
         status: "pending",
@@ -127,7 +128,7 @@ describe("handleHumanEnvelope", () => {
       const result = await handleHumanEnvelope({
         envelope: createEnvelope({
           messageId: "tg-msg-denied",
-          text: "你是谁",
+          text: "who are you",
           peerId: "999",
           chatId: "999",
         }),
@@ -169,14 +170,14 @@ describe("handleHumanEnvelope", () => {
       const repositories = createRepositories(db);
       const runtime = createRuntime(repositories, {
         async complete(messages) {
-          expect(messages[1]?.content).toBe("继续刚才的话题");
-          return "我接着当前会话继续。";
+          expect(messages[1]?.content).toBe("continue the current topic");
+          return "I will continue in this session.";
         },
       });
 
       const envelope = createEnvelope({
         messageId: "tg-msg-session",
-        text: "继续刚才的话题",
+        text: "continue the current topic",
         threadId: "topic-7",
       });
 
@@ -194,7 +195,8 @@ describe("handleHumanEnvelope", () => {
 
       expect(result).toEqual({
         ok: true,
-        replyText: "我接着当前会话继续。",
+        replyText: "I will continue in this session.",
+        outboxId: "outbox:telegram:tg-msg-session",
       });
 
       const sessionRow = db
@@ -249,8 +251,8 @@ describe("handleHumanEnvelope", () => {
   });
 
   function openTestDb() {
-    dir = mkdtempSync(join(tmpdir(), "taoqibao-gateway-"));
-    return openTaoqibaoDb(join(dir, "state.db"));
+    dir = mkdtempSync(join(tmpdir(), "openpeach-gateway-"));
+    return openPeachDb(join(dir, "state.db"));
   }
 });
 

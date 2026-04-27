@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createRepositories,
   migrate,
-  openTaoqibaoDb,
+  openPeachDb,
 } from "../../store-sqlite/src/index.js";
 import { admitTask } from "./admission.js";
 import { TaskRegistry } from "./task-registry.js";
@@ -23,7 +23,7 @@ describe("task engine", () => {
   it("admits allowed owner private text as a turn task", () => {
     expect(
       admitTask({
-        text: "你好",
+        text: "浣犲ソ",
         sessionId: "session-1",
         requesterIdentity: { role: "owner" },
       }).executionMode,
@@ -32,7 +32,7 @@ describe("task engine", () => {
 
   it("denies unknown requesters without creating a model task", () => {
     const decision = admitTask({
-      text: "你好",
+      text: "浣犲ソ",
       sessionId: "session-1",
       requesterIdentity: { role: "unknown" },
     });
@@ -58,24 +58,24 @@ describe("task engine", () => {
 
   it("assigns distinct task ids for repeated identical turns", () => {
     const withMessageA = admitTask({
-      text: "你好",
+      text: "浣犲ソ",
       sessionId: "session-1",
       messageId: "message-1",
       requesterIdentity: { role: "owner" },
     });
     const withMessageB = admitTask({
-      text: "你好",
+      text: "浣犲ソ",
       sessionId: "session-1",
       messageId: "message-2",
       requesterIdentity: { role: "owner" },
     });
     const generatedA = admitTask({
-      text: "你好",
+      text: "浣犲ソ",
       sessionId: "session-1",
       requesterIdentity: { role: "owner" },
     });
     const generatedB = admitTask({
-      text: "你好",
+      text: "浣犲ソ",
       sessionId: "session-1",
       requesterIdentity: { role: "owner" },
     });
@@ -95,7 +95,7 @@ describe("task engine", () => {
       migrate(db);
       const registry = new TaskRegistry(createRepositories(db));
       const decision = admitTask({
-        text: "你好",
+        text: "浣犲ソ",
         sessionId: "session-1",
         requesterIdentity: { role: "owner", personId: "person-1" },
       });
@@ -127,7 +127,7 @@ describe("task engine", () => {
       migrate(db);
       const registry = new TaskRegistry(createRepositories(db));
       const decision = admitTask({
-        text: "你好",
+        text: "浣犲ソ",
         sessionId: "session-1",
         taskId: "task-audit-1",
         requesterIdentity: { role: "owner", personId: "person-1" },
@@ -142,7 +142,7 @@ describe("task engine", () => {
 
       expect(JSON.parse(row.packet_json)).toMatchObject({
         taskId: "task-audit-1",
-        objective: "你好",
+        objective: "浣犲ソ",
         sourceSessionId: "session-1",
       });
     } finally {
@@ -157,7 +157,7 @@ describe("task engine", () => {
       migrate(db);
       const registry = new TaskRegistry(createRepositories(db));
       const decision = admitTask({
-        text: "你好",
+        text: "浣犲ソ",
         sessionId: "session-1",
         taskId: "task-status-1",
         requesterIdentity: { role: "owner", personId: "person-1" },
@@ -178,7 +178,7 @@ describe("task engine", () => {
   });
 
   function openTestDb() {
-    dir = mkdtempSync(join(tmpdir(), "taoqibao-task-engine-"));
-    return openTaoqibaoDb(join(dir, "state.db"));
+    dir = mkdtempSync(join(tmpdir(), "openpeach-task-engine-"));
+    return openPeachDb(join(dir, "state.db"));
   }
 });

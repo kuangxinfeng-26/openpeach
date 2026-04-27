@@ -3,11 +3,15 @@ import { fileURLToPath } from "node:url";
 import { createTelegramAdapter } from "../../../packages/channel-telegram/src/index.js";
 import { createEventBus } from "../../../packages/event-bus/src/index.js";
 import { ExternalChatClient } from "../../../packages/model-adapters/src/index.js";
-import { MainAgentRuntime } from "../../../packages/runtime/src/index.js";
+import {
+  initializeRuntimeWorkspace,
+  loadAgentProfile,
+  MainAgentRuntime,
+} from "../../../packages/runtime/src/index.js";
 import {
   createRepositories,
   migrate,
-  openTaoqibaoDb,
+  openPeachDb,
 } from "../../../packages/store-sqlite/src/index.js";
 import { loadConfig } from "./config.js";
 import { handleHumanEnvelope } from "./pipeline.js";
@@ -16,7 +20,17 @@ const PHASE0_TELEGRAM_BOT_ACCOUNT_ID = "bot-main";
 
 export async function main(): Promise<void> {
   const config = loadConfig();
-  const db = openTaoqibaoDb(config.stateDbPath);
+  initializeRuntimeWorkspace({
+    openPeachHome: config.openPeachHome,
+    familyId: config.familyId,
+    templateRoot: `${process.cwd()}/.openpeach`,
+  });
+  const systemPrompt = loadAgentProfile({
+    openPeachHome: config.openPeachHome,
+    familyId: config.familyId,
+    agentId: config.coreAgentId,
+  });
+  const db = openPeachDb(config.stateDbPath);
   migrate(db);
 
   const repositories = createRepositories(db);
@@ -30,6 +44,7 @@ export async function main(): Promise<void> {
   const runtime = new MainAgentRuntime({
     repositories,
     model,
+    systemPrompt,
     emit(event) {
       eventBus.publish({
         eventId: randomUUID(),
@@ -48,6 +63,7 @@ export async function main(): Promise<void> {
 
   const telegram = createTelegramAdapter({
     token: config.telegramBotToken,
+    apiRoot: config.telegramApiRoot,
     botAccountId: PHASE0_TELEGRAM_BOT_ACCOUNT_ID,
     async onEnvelope(envelope) {
       const result = await handleHumanEnvelope({
@@ -63,7 +79,10 @@ export async function main(): Promise<void> {
         },
       });
 
-      return result.ok ? { replyText: result.replyText } : {};
+      return result.ok ? { replyText: result.replyText, outboxId: result.outboxId } : {};
+    },
+    onReplySent({ outboxId }) {
+      repositories.markOutboxSent(outboxId);
     },
   });
 

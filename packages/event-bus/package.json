@@ -1,5 +1,5 @@
 {
-  "name": "@taoqibao/event-bus",
+  "name": "@openpeach/event-bus",
   "version": "0.1.0",
   "private": true,
   "type": "module",

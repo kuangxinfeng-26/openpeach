@@ -5,7 +5,7 @@ import { getOrCreateSession } from "../../../packages/session-kernel/src/index.j
 import { admitTask } from "../../../packages/task-engine/src/index.js";
 
 export type HandleHumanEnvelopeResult =
-  | { ok: true; replyText: string }
+  | { ok: true; replyText: string; outboxId: string }
   | { ok: false; reason: string };
 
 export type HandleHumanEnvelopeDeps = {
@@ -23,7 +23,7 @@ export type HandleHumanEnvelopeDeps = {
     }): void;
   };
   runtime: {
-    handleTurn(input: MainAgentTurnInput): Promise<{ replyText: string }>;
+    handleTurn(input: MainAgentTurnInput): Promise<{ replyText: string; outboxId: string }>;
   };
 };
 
@@ -77,5 +77,6 @@ export async function handleHumanEnvelope(input: {
   return {
     ok: true,
     replyText: result.replyText,
+    outboxId: result.outboxId,
   };
 }

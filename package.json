@@ -1,5 +1,5 @@
 {
-  "name": "taoqibao",
+  "name": "openpeach",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,7 +19,10 @@
     "dev": "tsx apps/gateway/src/index.ts",
     "start": "node apps/gateway/dist/index.js",
     "doctor": "tsx apps/gateway/src/doctor.ts",
-    "phase0:check": "node scripts/check-phase0.mjs"
+    "model:sync": "node scripts/sync-openpeach-env-from-profile.mjs",
+    "phase0:check": "node scripts/check-phase0.mjs",
+    "release:check": "node scripts/check-release.mjs",
+    "install:linux": "bash deploy/linux/install-openpeach.sh"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
@@ -33,6 +36,6 @@
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.5"
   }
 }
