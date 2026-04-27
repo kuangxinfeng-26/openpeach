@@ -72,11 +72,11 @@ describe("handleHumanEnvelope", () => {
         },
       });
 
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         ok: true,
         replyText: "Sure, we can take it slowly.",
-        outboxId: "outbox:telegram:tg-msg-1",
       });
+      expect(result.ok ? result.outboxId : "").toMatch(/^outbox:telegram:/);
       expect(modelCalls).toBe(1);
 
       const outboxRow = db
@@ -87,7 +87,7 @@ describe("handleHumanEnvelope", () => {
             WHERE outbox_id = ?
           `,
         )
-        .get("outbox:telegram:tg-msg-1") as
+        .get(result.ok ? result.outboxId : "") as
         | {
             outbox_id: string;
             target_ref: string;
@@ -97,7 +97,7 @@ describe("handleHumanEnvelope", () => {
         | undefined;
 
       expect(outboxRow).toEqual({
-        outbox_id: "outbox:telegram:tg-msg-1",
+        outbox_id: result.ok ? result.outboxId : "",
         target_ref: "456",
         payload_json: JSON.stringify({
           chatId: "456",
@@ -193,11 +193,11 @@ describe("handleHumanEnvelope", () => {
         },
       });
 
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         ok: true,
         replyText: "I will continue in this session.",
-        outboxId: "outbox:telegram:tg-msg-session",
       });
+      expect(result.ok ? result.outboxId : "").toMatch(/^outbox:telegram:/);
 
       const sessionRow = db
         .prepare(
@@ -239,12 +239,96 @@ describe("handleHumanEnvelope", () => {
 
       expect(taskRow?.status).toBe("succeeded");
       expect(JSON.parse(taskRow?.packet_json ?? "null")).toMatchObject({
-        taskId: envelope.messageId,
+        taskId: `task:${sessionRow?.session_id}:tg-msg-session`,
         sourceSessionId: sessionRow?.session_id,
         scopeRef: sessionRow?.session_id,
         executionMode: "turn",
         objective: envelope.text,
       });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("routes device intents to a home session and home runtime", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let mainCalls = 0;
+      let homeCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          mainCalls += 1;
+          return "main should not handle device work";
+        },
+      });
+      const homeRuntime = {
+        async handleTurn(input: Parameters<typeof mainRuntime.handleTurn>[0]) {
+          homeCalls += 1;
+          expect(input.session.coreAgentId).toBe("home");
+          expect(input.task).toMatchObject({
+            targetAgent: "home",
+            scopeKind: "device",
+            priority: "P1",
+          });
+          return {
+            replyText: "Living Room Lamp is online and power is off.",
+            outboxId: "outbox:telegram:tg-home-route",
+          };
+        },
+      };
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-home-route",
+          text: "is the living room lamp on?",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          homeRuntime,
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        replyText: "Living Room Lamp is online and power is off.",
+        outboxId: "outbox:telegram:tg-home-route",
+      });
+      expect(mainCalls).toBe(0);
+      expect(homeCalls).toBe(1);
+
+      const sessionRow = db
+        .prepare(
+          `
+            SELECT core_agent_id, session_key
+            FROM sessions
+            WHERE core_agent_id = 'home'
+          `,
+        )
+        .get() as { core_agent_id: string; session_key: string } | undefined;
+
+      expect(sessionRow?.session_key).toBe(
+        "family:family-main/agent:home/channel:telegram/account:bot-main/peer:456/scene:default/thread:dm",
+      );
+
+      const mainSessionCount = db
+        .prepare(
+          `
+            SELECT COUNT(*) AS count
+            FROM sessions
+            WHERE core_agent_id = 'main'
+          `,
+        )
+        .get() as { count: number };
+
+      expect(mainSessionCount.count).toBe(0);
     } finally {
       db.close();
     }

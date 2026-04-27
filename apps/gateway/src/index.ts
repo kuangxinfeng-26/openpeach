@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createTelegramAdapter } from "../../../packages/channel-telegram/src/index.js";
+import { createMockDeviceAdapter } from "../../../packages/device-adapter/src/index.js";
 import { createEventBus } from "../../../packages/event-bus/src/index.js";
 import { ExternalChatClient } from "../../../packages/model-adapters/src/index.js";
 import {
+  HomeAgentRuntime,
   initializeRuntimeWorkspace,
   loadAgentProfile,
   MainAgentRuntime,
@@ -29,6 +31,11 @@ export async function main(): Promise<void> {
     openPeachHome: config.openPeachHome,
     familyId: config.familyId,
     agentId: config.coreAgentId,
+  });
+  loadAgentProfile({
+    openPeachHome: config.openPeachHome,
+    familyId: config.familyId,
+    agentId: "home",
   });
   const db = openPeachDb(config.stateDbPath);
   migrate(db);
@@ -60,6 +67,17 @@ export async function main(): Promise<void> {
       }));
     },
   });
+  const homeRuntime = new HomeAgentRuntime({
+    repositories,
+    deviceAdapter: createMockDeviceAdapter(),
+    emit(event) {
+      eventBus.publish({
+        eventId: randomUUID(),
+        event,
+        createdAtMs: Date.now(),
+      });
+    },
+  });
 
   const telegram = createTelegramAdapter({
     token: config.telegramBotToken,
@@ -76,6 +94,7 @@ export async function main(): Promise<void> {
           },
           repositories,
           runtime,
+          homeRuntime,
         },
       });
 

@@ -14,12 +14,12 @@ export type SessionContext = {
   sessionId: string;
   sessionKey: string;
   familyId: string;
-  coreAgentId: "main";
+  coreAgentId: "main" | "home" | "lab";
 };
 
 export function getOrCreateSession(
   repo: SessionUpsertRepo,
-  input: SessionKeyInput & { coreAgentId: "main" },
+  input: SessionKeyInput & { coreAgentId: "main" | "home" | "lab" },
 ): SessionContext {
   const sessionKey = buildSessionKey(input);
   const sessionId = createHash("sha256").update(sessionKey, "utf8").digest("hex");

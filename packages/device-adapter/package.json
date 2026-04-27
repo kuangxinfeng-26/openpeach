@@ -1,0 +1,8 @@
+{
+  "name": "@openpeach/device-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/packages/device-adapter/src/index.js",
+  "types": "dist/packages/device-adapter/src/index.d.ts"
+}

@@ -32,6 +32,16 @@ export interface InsertOutboxOnceInput {
   payloadJson: string;
 }
 
+export interface InsertDeviceEventInput {
+  deviceEventId: string;
+  deviceId: string;
+  eventType: string;
+  taskId?: string;
+  sessionId?: string;
+  payloadJson: string;
+  createdAtMs: number;
+}
+
 export interface SearchMessageResult {
   messageId: string;
   sessionId: string;
@@ -58,6 +68,7 @@ export type TaskRepositoryStatus =
   | "created"
   | "admitted"
   | "running"
+  | "awaiting_confirmation"
   | "succeeded"
   | "failed";
 
@@ -191,6 +202,27 @@ export function createRepositories(db: OpenPeachDb) {
     ON CONFLICT(idempotency_key) DO NOTHING
   `);
 
+  const insertDeviceEventStatement = db.prepare(`
+    INSERT INTO device_events (
+      device_event_id,
+      device_id,
+      event_type,
+      task_id,
+      session_id,
+      payload_json,
+      created_at_ms
+    )
+    VALUES (
+      @deviceEventId,
+      @deviceId,
+      @eventType,
+      @taskId,
+      @sessionId,
+      @payloadJson,
+      @createdAtMs
+    )
+  `);
+
   const markOutboxSentStatement = db.prepare(`
     UPDATE outbox
     SET status = 'sent',
@@ -301,6 +333,14 @@ export function createRepositories(db: OpenPeachDb) {
       });
     },
 
+    insertDeviceEvent(input: InsertDeviceEventInput): void {
+      insertDeviceEventStatement.run({
+        ...input,
+        taskId: input.taskId ?? null,
+        sessionId: input.sessionId ?? null,
+      });
+    },
+
     createTask(
       packet: TaskRepositoryPacket,
       status: "created" | "admitted",
@@ -334,7 +374,7 @@ export function createRepositories(db: OpenPeachDb) {
 
     updateTaskStatus(
       taskId: string,
-      status: "running" | "succeeded" | "failed",
+      status: "running" | "awaiting_confirmation" | "succeeded" | "failed",
     ): void {
       const existing = getTask(taskId);
       if (!existing) {
@@ -422,6 +462,9 @@ function toFtsPrefixQuery(query: string): string {
 function isAllowedTaskTransition(from: string, to: string): boolean {
   return (
     (from === "admitted" && to === "running") ||
-    (from === "running" && (to === "succeeded" || to === "failed"))
+    (from === "running" &&
+      (to === "awaiting_confirmation" ||
+        to === "succeeded" ||
+        to === "failed"))
   );
 }

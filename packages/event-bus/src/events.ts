@@ -27,6 +27,23 @@ export type OpenPeachEvent =
       sessionId: string;
       taskId: string;
       payload: { outboxId: string };
+    }
+  | {
+      type: "device.state_read";
+      sessionId: string;
+      taskId: string;
+      payload: { deviceId: string; state: Record<string, unknown> };
+    }
+  | {
+      type: "device.command_acknowledged";
+      sessionId: string;
+      taskId: string;
+      payload: {
+        deviceId: string;
+        action: string;
+        commandId: string;
+        state: Record<string, unknown>;
+      };
     };
 
 export type { OpenPeachEvent as Event };

@@ -33,8 +33,11 @@ export class MainAgentRuntime {
     outboxId: string;
   }> {
     const { envelope, session, task } = input;
-    const userMessageKey = userMessageId(envelope.messageId);
-    const assistantMessageKey = assistantMessageId(envelope.messageId);
+    const userMessageKey = userMessageId(session.sessionId, envelope.messageId);
+    const assistantMessageKey = assistantMessageId(
+      session.sessionId,
+      envelope.messageId,
+    );
     let taskCreated = false;
 
     try {
@@ -74,10 +77,10 @@ export class MainAgentRuntime {
         });
       }
 
-      const outboxId = outboxMessageId(envelope.messageId);
+      const outboxId = outboxMessageId(session.sessionId, envelope.messageId);
       this.deps.repositories.insertOutboxOnce({
         outboxId,
-        idempotencyKey: `telegram:reply:${envelope.messageId}`,
+        idempotencyKey: `telegram:reply:${session.sessionId}:${envelope.messageId}`,
         channel: "telegram",
         targetRef: envelope.chatId,
         payloadJson: JSON.stringify({
@@ -230,7 +233,18 @@ export type MainAgentRepositories = {
   createTask(packet: TaskPacket, status: "created" | "admitted"): void;
   getTask(
     taskId: string,
-  ): { taskId: string; status: "created" | "admitted" | "running" | "succeeded" | "failed" } | undefined;
+  ):
+    | {
+        taskId: string;
+        status:
+          | "created"
+          | "admitted"
+          | "running"
+          | "awaiting_confirmation"
+          | "succeeded"
+          | "failed";
+      }
+    | undefined;
   updateTaskStatus(
     taskId: string,
     status: "running" | "succeeded" | "failed",
@@ -276,14 +290,14 @@ function toErrorMessage(error: unknown): string {
   return "unknown runtime error";
 }
 
-function userMessageId(messageId: string): string {
-  return `user:${messageId}`;
+function userMessageId(sessionId: string, messageId: string): string {
+  return `user:${sessionId}:${messageId}`;
 }
 
-function assistantMessageId(messageId: string): string {
-  return `assistant:${messageId}`;
+function assistantMessageId(sessionId: string, messageId: string): string {
+  return `assistant:${sessionId}:${messageId}`;
 }
 
-function outboxMessageId(messageId: string): string {
-  return `outbox:telegram:${messageId}`;
+function outboxMessageId(sessionId: string, messageId: string): string {
+  return `outbox:telegram:${sessionId}:${messageId}`;
 }

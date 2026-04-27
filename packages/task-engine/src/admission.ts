@@ -33,10 +33,14 @@ export function admitTask(input: AdmitTaskInput): AdmissionDecision {
     };
   }
 
-  if (
-    input.requesterIdentity.allowed === false ||
-    input.requesterIdentity.role !== "owner"
-  ) {
+  if (input.requesterIdentity.allowed !== true) {
+    return {
+      admitted: false,
+      reason: "Task denied because requester was not allowlisted",
+    };
+  }
+
+  if (input.requesterIdentity.role !== "owner") {
     return {
       admitted: false,
       reason: "Task denied for unknown or unauthorized requester",
@@ -47,23 +51,30 @@ export function admitTask(input: AdmitTaskInput): AdmissionDecision {
     input.requesterIdentity.personId ??
     input.requesterIdentity.channelIdentityId ??
     "owner";
+  const route = resolveTaskRoute(objective);
   const task = TaskPacketSchema.parse({
-    taskId: input.taskId ?? input.messageId ?? input.idempotencyKey ?? randomUUID(),
+    taskId:
+      input.taskId ??
+      scopedTaskId(input.sessionId, input.messageId ?? input.idempotencyKey),
     objective,
-    scopeKind: "conversation",
-    scopeRef: input.sessionId,
+    scopeKind: route.scopeKind,
+    scopeRef: route.scopeRef ?? input.sessionId,
     sourceSessionId: input.sessionId,
     requesterIdentityId,
-    targetAgent: "main",
-    priority: "P0",
-    executionMode: "turn",
-    acceptanceContract: "Respond to the current private conversation turn.",
+    targetAgent: route.targetAgent,
+    priority: route.targetAgent === "home" ? "P1" : "P0",
+    executionMode: route.targetAgent === "home" ? "microtask" : "turn",
+    acceptanceContract: route.targetAgent === "home"
+      ? "Read or safely control the requested household device."
+      : "Respond to the current private conversation turn.",
     reportingContract: "Return the answer in the source session.",
-    escalationPolicy: "Deny unsupported fan-out in Phase 0.",
-    resourceLocks: [],
+    escalationPolicy: route.targetAgent === "home"
+      ? "Require confirmation for high-risk home actions."
+      : "Deny unsupported fan-out in Phase 0.",
+    resourceLocks: route.scopeRef ? [`device:${route.scopeRef}`] : [],
     budget: {
-      runtimeMs: 30_000,
-      toolCalls: 8,
+      runtimeMs: route.targetAgent === "home" ? 10_000 : 30_000,
+      toolCalls: route.targetAgent === "home" ? 2 : 8,
       childTasks: 0,
     },
     memoryPolicy: "session_only",
@@ -74,4 +85,56 @@ export function admitTask(input: AdmitTaskInput): AdmissionDecision {
     executionMode: task.executionMode,
     task,
   };
+}
+
+export type TaskRoute = {
+  targetAgent: "main" | "home";
+  scopeKind: "conversation" | "device";
+  scopeRef?: string;
+};
+
+export function resolveTaskRoute(text: string): TaskRoute {
+  const deviceIntent = detectDeviceIntent(text);
+  if (deviceIntent) {
+    return {
+      targetAgent: "home",
+      scopeKind: "device",
+      scopeRef: deviceIntent.deviceId,
+    };
+  }
+
+  return {
+    targetAgent: "main",
+    scopeKind: "conversation",
+  };
+}
+
+function scopedTaskId(sessionId: string, rawId: string | undefined): string {
+  if (!rawId) {
+    return randomUUID();
+  }
+
+  return `task:${sessionId}:${rawId}`;
+}
+
+function detectDeviceIntent(text: string): { deviceId: string } | undefined {
+  const normalized = text.toLowerCase();
+
+  if (
+    normalized.includes("living room lamp") ||
+    normalized.includes("living room light") ||
+    normalized.includes("\u5ba2\u5385\u706f")
+  ) {
+    return { deviceId: "mock:living-room-lamp" };
+  }
+
+  if (
+    normalized.includes("camera") ||
+    normalized.includes("recording") ||
+    normalized.includes("\u6444\u50cf\u5934")
+  ) {
+    return { deviceId: "mock:front-camera" };
+  }
+
+  return undefined;
 }

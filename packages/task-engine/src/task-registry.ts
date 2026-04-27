@@ -4,6 +4,7 @@ export type TaskStatus =
   | "created"
   | "admitted"
   | "running"
+  | "awaiting_confirmation"
   | "succeeded"
   | "failed";
 
@@ -11,7 +12,7 @@ export type TaskRepository = {
   createTask(packet: TaskPacket, status: "created" | "admitted"): void;
   updateTaskStatus(
     taskId: string,
-    status: "running" | "succeeded" | "failed",
+    status: "running" | "awaiting_confirmation" | "succeeded" | "failed",
   ): void;
   getTask(taskId: string): { taskId: string; status: TaskStatus } | undefined;
 };
@@ -37,6 +38,10 @@ export class TaskRegistry {
 
   markFailed(taskId: string): void {
     this.repository.updateTaskStatus(taskId, "failed");
+  }
+
+  markAwaitingConfirmation(taskId: string): void {
+    this.repository.updateTaskStatus(taskId, "awaiting_confirmation");
   }
 
   get(taskId: string): { taskId: string; status: TaskStatus } | undefined {

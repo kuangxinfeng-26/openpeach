@@ -1,8 +1,11 @@
 import type { HumanEnvelope } from "../../../packages/envelope/src/index.js";
 import { resolveIdentity } from "../../../packages/identity/src/index.js";
-import type { MainAgentTurnInput } from "../../../packages/runtime/src/index.js";
+import type {
+  HomeAgentTurnInput,
+  MainAgentTurnInput,
+} from "../../../packages/runtime/src/index.js";
 import { getOrCreateSession } from "../../../packages/session-kernel/src/index.js";
-import { admitTask } from "../../../packages/task-engine/src/index.js";
+import { admitTask, resolveTaskRoute } from "../../../packages/task-engine/src/index.js";
 
 export type HandleHumanEnvelopeResult =
   | { ok: true; replyText: string; outboxId: string }
@@ -25,6 +28,12 @@ export type HandleHumanEnvelopeDeps = {
   runtime: {
     handleTurn(input: MainAgentTurnInput): Promise<{ replyText: string; outboxId: string }>;
   };
+  homeRuntime?: {
+    handleTurn(input: HomeAgentTurnInput): Promise<{
+      replyText: string;
+      outboxId: string;
+    }>;
+  };
 };
 
 export async function handleHumanEnvelope(input: {
@@ -44,9 +53,12 @@ export async function handleHumanEnvelope(input: {
     };
   }
 
+  const route = resolveTaskRoute(envelope.text);
+  const coreAgentId =
+    route.targetAgent === "home" ? "home" : deps.config.coreAgentId ?? "main";
   const session = getOrCreateSession(deps.repositories, {
     familyId: identity.familyId,
-    coreAgentId: deps.config.coreAgentId ?? "main",
+    coreAgentId,
     channel: envelope.channel,
     accountId: envelope.accountId,
     peerId: envelope.peerId,
@@ -65,6 +77,28 @@ export async function handleHumanEnvelope(input: {
     return {
       ok: false,
       reason: decision.reason ?? "Task was not admitted",
+    };
+  }
+
+  if (decision.task.targetAgent === "home") {
+    if (!deps.homeRuntime) {
+      return {
+        ok: false,
+        reason: "Home agent runtime is not configured",
+      };
+    }
+
+    const result = await deps.homeRuntime.handleTurn({
+      envelope,
+      session,
+      task: decision.task,
+      requester: { role: identity.role },
+    });
+
+    return {
+      ok: true,
+      replyText: result.replyText,
+      outboxId: result.outboxId,
     };
   }
 

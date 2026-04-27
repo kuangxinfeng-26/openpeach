@@ -57,6 +57,16 @@ export function migrate(db: OpenPeachDb): void {
       created_at_ms INTEGER NOT NULL,
       updated_at_ms INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS device_events (
+      device_event_id TEXT PRIMARY KEY,
+      device_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      task_id TEXT,
+      session_id TEXT,
+      payload_json TEXT NOT NULL,
+      created_at_ms INTEGER NOT NULL
+    );
   `);
 
   const taskColumns = db.prepare("PRAGMA table_info(tasks)").all() as Array<{

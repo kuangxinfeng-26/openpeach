@@ -46,7 +46,7 @@ describe("MainAgentRuntime", () => {
         text: envelope.text,
         sessionId: session.sessionId,
         messageId: envelope.messageId,
-        requesterIdentity: { role: "owner", personId: "owner-1" },
+        requesterIdentity: { role: "owner", allowed: true, personId: "owner-1" },
       });
 
       expect(decision.task).toBeDefined();
@@ -76,7 +76,7 @@ describe("MainAgentRuntime", () => {
 
       expect(result).toEqual({
         replyText: "Sure, we can take it slowly.",
-        outboxId: "outbox:telegram:tg-msg-1",
+        outboxId: `outbox:telegram:${session.sessionId}:tg-msg-1`,
       });
 
       const messages = db
@@ -96,12 +96,12 @@ describe("MainAgentRuntime", () => {
 
       expect(messages).toEqual([
         {
-          message_id: "user:tg-msg-1",
+          message_id: `user:${session.sessionId}:tg-msg-1`,
           role: "user",
           text: "chat with me today",
         },
         {
-          message_id: "assistant:tg-msg-1",
+          message_id: `assistant:${session.sessionId}:tg-msg-1`,
           role: "assistant",
           text: "Sure, we can take it slowly.",
         },
@@ -140,8 +140,8 @@ describe("MainAgentRuntime", () => {
         | undefined;
 
       expect(outboxRow).toEqual({
-        outbox_id: "outbox:telegram:tg-msg-1",
-        idempotency_key: "telegram:reply:tg-msg-1",
+        outbox_id: `outbox:telegram:${session.sessionId}:tg-msg-1`,
+        idempotency_key: `telegram:reply:${session.sessionId}:tg-msg-1`,
         channel: "telegram",
         target_ref: "456",
         payload_json: JSON.stringify({
@@ -174,7 +174,7 @@ describe("MainAgentRuntime", () => {
           type: "reply.queued",
           sessionId: session.sessionId,
           taskId: decision.task!.taskId,
-          payload: { outboxId: "outbox:telegram:tg-msg-1" },
+          payload: { outboxId: `outbox:telegram:${session.sessionId}:tg-msg-1` },
         },
       ]);
     } finally {
@@ -206,7 +206,7 @@ describe("MainAgentRuntime", () => {
         text: envelope.text,
         sessionId: session.sessionId,
         messageId: envelope.messageId,
-        requesterIdentity: { role: "owner", personId: "owner-1" },
+        requesterIdentity: { role: "owner", allowed: true, personId: "owner-1" },
       });
 
       expect(decision.task).toBeDefined();
@@ -313,13 +313,13 @@ describe("MainAgentRuntime", () => {
         text: envelope.text,
         sessionId: session.sessionId,
         messageId: envelope.messageId,
-        requesterIdentity: { role: "owner", personId: "owner-1" },
+        requesterIdentity: { role: "owner", allowed: true, personId: "owner-1" },
       });
 
       expect(decision.task).toBeDefined();
 
       repositories.appendMessage({
-        messageId: "user:tg-msg-replay",
+        messageId: `user:${session.sessionId}:tg-msg-replay`,
         sessionId: session.sessionId,
         role: "user",
         text: "try again",
@@ -329,7 +329,7 @@ describe("MainAgentRuntime", () => {
       repositories.createTask(decision.task!, "admitted");
       repositories.updateTaskStatus(decision.task!.taskId, "running");
       repositories.appendMessage({
-        messageId: "assistant:tg-msg-replay",
+        messageId: `assistant:${session.sessionId}:tg-msg-replay`,
         sessionId: session.sessionId,
         role: "assistant",
         text: "This reply was already generated last time.",
@@ -354,7 +354,7 @@ describe("MainAgentRuntime", () => {
 
       expect(result).toEqual({
         replyText: "This reply was already generated last time.",
-        outboxId: "outbox:telegram:tg-msg-replay",
+        outboxId: `outbox:telegram:${session.sessionId}:tg-msg-replay`,
       });
 
       const countRow = db
@@ -378,12 +378,12 @@ describe("MainAgentRuntime", () => {
             WHERE outbox_id = ?
           `,
         )
-        .get("outbox:telegram:tg-msg-replay") as
+        .get(`outbox:telegram:${session.sessionId}:tg-msg-replay`) as
         | { outbox_id: string; payload_json: string; status: string }
         | undefined;
 
       expect(outboxRow).toEqual({
-        outbox_id: "outbox:telegram:tg-msg-replay",
+        outbox_id: `outbox:telegram:${session.sessionId}:tg-msg-replay`,
         payload_json: JSON.stringify({
           chatId: "456",
           text: "This reply was already generated last time.",
@@ -419,7 +419,7 @@ describe("MainAgentRuntime", () => {
         text: envelope.text,
         sessionId: session.sessionId,
         messageId: envelope.messageId,
-        requesterIdentity: { role: "owner", personId: "owner-1" },
+        requesterIdentity: { role: "owner", allowed: true, personId: "owner-1" },
       });
 
       expect(decision.task).toBeDefined();
@@ -492,7 +492,7 @@ describe("MainAgentRuntime", () => {
         text: envelope.text,
         sessionId: session.sessionId,
         messageId: envelope.messageId,
-        requesterIdentity: { role: "owner", personId: "owner-1" },
+        requesterIdentity: { role: "owner", allowed: true, personId: "owner-1" },
       });
 
       expect(decision.task).toBeDefined();
@@ -538,7 +538,11 @@ describe("MainAgentRuntime", () => {
         taskId: decision.task!.taskId,
         status: "failed",
       });
-      expect(repositories.getMessageById("assistant:tg-msg-revive")?.text).toBe(
+      expect(
+        repositories.getMessageById(
+          `assistant:${session.sessionId}:tg-msg-revive`,
+        )?.text,
+      ).toBe(
         "This reply was generated the first time.",
       );
 
@@ -560,7 +564,7 @@ describe("MainAgentRuntime", () => {
 
       expect(result).toEqual({
         replyText: "This reply was generated the first time.",
-        outboxId: "outbox:telegram:tg-msg-revive",
+        outboxId: `outbox:telegram:${session.sessionId}:tg-msg-revive`,
       });
       expect(repositories.getTask(decision.task!.taskId)).toEqual({
         taskId: decision.task!.taskId,

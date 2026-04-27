@@ -122,3 +122,15 @@ sudo journalctl -u openpeach-mihomo -f
 - `npm run model:sync` syncs `.openpeach/model.runtime.local.toml` into the runtime `.env`.
 - `npm run phase0:check` runs `npm run check`, `npm test`, and `npm run doctor` as a combined readiness check.
 - `npm run dev` starts the Telegram gateway directly from TypeScript sources for Phase 0.
+
+## Phase 2 Home Device Preview
+
+The gateway now includes a narrow `home` agent route for mock device work. This is not a real Home Assistant, camera, or toy integration yet. It proves the runtime boundary: obvious lamp/camera requests become `P1` device tasks, run in a separate `home` session, and write auditable `device_events`.
+
+The mock preview currently supports:
+
+- Querying `mock:living-room-lamp` state.
+- Turning the mock living-room lamp on or off for the allowlisted owner.
+- Parking mock camera recording in `awaiting_confirmation` instead of executing it.
+
+See [phase2-home-device-mvp.md](./phase2-home-device-mvp.md) before extending this path to real hardware.

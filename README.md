@@ -6,15 +6,17 @@ Before making agent-driven changes in this repository, read [AGENTS.md](./AGENTS
 
 ## Current Status
 
-Phase 0 is an MVP, not a finished home hub. The verified runtime path currently includes:
+Phase 0 is complete and Phase 2 has started with a narrow home-device MVP. The verified runtime path currently includes:
 
 - Telegram gateway with Bot API polling and typing/read-style chat actions.
 - `main` agent runtime loaded from an OpenPeach workspace `agent.md` profile.
-- SQLite-backed sessions, messages, task records, events, and outbox state.
+- `home` agent routing for mock household device work while preserving a separate home session.
+- Mock `DeviceAdapter` support for a living-room lamp and high-risk camera confirmation flow.
+- SQLite-backed sessions, messages, task records, events, device events, and outbox state.
 - External OpenAI-compatible model configuration through `.env` or a private model profile.
 - Linux installer with Node.js, systemd service rendering, runtime workspace initialization, and optional mihomo sidecar support.
 
-Planned next phases add personal WeChat, `home` device adapters, `lab` skill evolution, multi-user household permissions, camera event summaries, AI toy integration, and richer memory/search flows.
+Planned next phases add personal WeChat, real Home Assistant/camera/toy adapters, `lab` skill evolution, multi-user household permissions, camera event summaries, AI toy integration, and richer memory/search flows.
 
 ## Quick Start for Development
 
@@ -102,6 +104,8 @@ Useful commands:
 - `npm run release:check` runs release hygiene checks, `npm audit`, `check`, `test`, `build`, and `doctor`.
 - `npm run dev` starts the Phase 0 gateway from TypeScript source.
 - `npm run install:linux` runs the Linux installer from the current checkout.
+
+Phase 2 home-device details live in [docs/phase2-home-device-mvp.md](./docs/phase2-home-device-mvp.md).
 
 ## Security
 

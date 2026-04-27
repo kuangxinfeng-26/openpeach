@@ -20,25 +20,63 @@ describe("task engine", () => {
     }
   });
 
-  it("admits allowed owner private text as a turn task", () => {
+  it("admits allowlisted owner private text as a turn task", () => {
     expect(
       admitTask({
-        text: "浣犲ソ",
+        text: "hello",
         sessionId: "session-1",
-        requesterIdentity: { role: "owner" },
+        requesterIdentity: { role: "owner", allowed: true },
       }).executionMode,
     ).toBe("turn");
   });
 
+  it("denies owner-shaped requesters that have not passed allowlist resolution", () => {
+    const decision = admitTask({
+      text: "is the living room lamp on?",
+      sessionId: "session-1",
+      requesterIdentity: { role: "owner" },
+    });
+
+    expect(decision).toMatchObject({
+      admitted: false,
+      reason: "Task denied because requester was not allowlisted",
+    });
+    expect("task" in decision).toBe(false);
+  });
+
+  it("routes explicit living-room lamp requests to the home agent as P1 device work", () => {
+    const decision = admitTask({
+      text: "is the living room lamp on?",
+      sessionId: "session-home-1",
+      messageId: "message-home-1",
+      requesterIdentity: { role: "owner", allowed: true, personId: "person-1" },
+    });
+
+    expect(decision).toMatchObject({
+      admitted: true,
+      executionMode: "microtask",
+      task: {
+        taskId: "task:session-home-1:message-home-1",
+        scopeKind: "device",
+        scopeRef: "mock:living-room-lamp",
+        targetAgent: "home",
+        priority: "P1",
+        executionMode: "microtask",
+        resourceLocks: ["device:mock:living-room-lamp"],
+        memoryPolicy: "session_only",
+      },
+    });
+  });
+
   it("denies unknown requesters without creating a model task", () => {
     const decision = admitTask({
-      text: "浣犲ソ",
+      text: "hello",
       sessionId: "session-1",
       requesterIdentity: { role: "unknown" },
     });
 
     expect(decision.admitted).toBe(false);
-    expect(decision.reason).toMatch(/denied|unknown/i);
+    expect(decision.reason).toMatch(/denied|unknown|allowlisted/i);
     expect("task" in decision).toBe(false);
   });
 
@@ -46,7 +84,7 @@ describe("task engine", () => {
     const decision = admitTask({
       text: "   ",
       sessionId: "session-1",
-      requesterIdentity: { role: "owner" },
+      requesterIdentity: { role: "owner", allowed: true },
     });
 
     expect(decision).toMatchObject({
@@ -56,33 +94,43 @@ describe("task engine", () => {
     expect("task" in decision).toBe(false);
   });
 
-  it("assigns distinct task ids for repeated identical turns", () => {
+  it("assigns session-scoped task ids for repeated identical turns", () => {
     const withMessageA = admitTask({
-      text: "浣犲ソ",
+      text: "hello",
       sessionId: "session-1",
       messageId: "message-1",
-      requesterIdentity: { role: "owner" },
+      requesterIdentity: { role: "owner", allowed: true },
     });
     const withMessageB = admitTask({
-      text: "浣犲ソ",
+      text: "hello",
       sessionId: "session-1",
       messageId: "message-2",
-      requesterIdentity: { role: "owner" },
+      requesterIdentity: { role: "owner", allowed: true },
+    });
+    const sameMessageOtherSession = admitTask({
+      text: "hello",
+      sessionId: "session-2",
+      messageId: "message-1",
+      requesterIdentity: { role: "owner", allowed: true },
     });
     const generatedA = admitTask({
-      text: "浣犲ソ",
+      text: "hello",
       sessionId: "session-1",
-      requesterIdentity: { role: "owner" },
+      requesterIdentity: { role: "owner", allowed: true },
     });
     const generatedB = admitTask({
-      text: "浣犲ソ",
+      text: "hello",
       sessionId: "session-1",
-      requesterIdentity: { role: "owner" },
+      requesterIdentity: { role: "owner", allowed: true },
     });
 
-    expect(withMessageA.task?.taskId).toBe("message-1");
-    expect(withMessageB.task?.taskId).toBe("message-2");
+    expect(withMessageA.task?.taskId).toBe("task:session-1:message-1");
+    expect(withMessageB.task?.taskId).toBe("task:session-1:message-2");
+    expect(sameMessageOtherSession.task?.taskId).toBe("task:session-2:message-1");
     expect(withMessageA.task?.taskId).not.toBe(withMessageB.task?.taskId);
+    expect(withMessageA.task?.taskId).not.toBe(
+      sameMessageOtherSession.task?.taskId,
+    );
     expect(generatedA.task?.taskId).toBeDefined();
     expect(generatedB.task?.taskId).toBeDefined();
     expect(generatedA.task?.taskId).not.toBe(generatedB.task?.taskId);
@@ -95,9 +143,9 @@ describe("task engine", () => {
       migrate(db);
       const registry = new TaskRegistry(createRepositories(db));
       const decision = admitTask({
-        text: "浣犲ソ",
+        text: "hello",
         sessionId: "session-1",
-        requesterIdentity: { role: "owner", personId: "person-1" },
+        requesterIdentity: { role: "owner", allowed: true, personId: "person-1" },
       });
 
       expect(decision.task).toBeDefined();
@@ -127,10 +175,10 @@ describe("task engine", () => {
       migrate(db);
       const registry = new TaskRegistry(createRepositories(db));
       const decision = admitTask({
-        text: "浣犲ソ",
+        text: "hello",
         sessionId: "session-1",
         taskId: "task-audit-1",
-        requesterIdentity: { role: "owner", personId: "person-1" },
+        requesterIdentity: { role: "owner", allowed: true, personId: "person-1" },
       });
 
       expect(decision.task).toBeDefined();
@@ -142,7 +190,7 @@ describe("task engine", () => {
 
       expect(JSON.parse(row.packet_json)).toMatchObject({
         taskId: "task-audit-1",
-        objective: "浣犲ソ",
+        objective: "hello",
         sourceSessionId: "session-1",
       });
     } finally {
@@ -157,10 +205,10 @@ describe("task engine", () => {
       migrate(db);
       const registry = new TaskRegistry(createRepositories(db));
       const decision = admitTask({
-        text: "浣犲ソ",
+        text: "hello",
         sessionId: "session-1",
         taskId: "task-status-1",
-        requesterIdentity: { role: "owner", personId: "person-1" },
+        requesterIdentity: { role: "owner", allowed: true, personId: "person-1" },
       });
 
       expect(decision.task).toBeDefined();
