@@ -92,4 +92,35 @@ describe("loadConfig", () => {
 
     expect(config.telegramApiRoot).toBe("http://127.0.0.1:8788");
   });
+
+  it("keeps the optional Story Bunny toy disabled unless explicitly enabled", () => {
+    const disabled = loadConfig({
+      TAOQIBAO_STATE_DB: "$HOME/.openpeach/families/main/state.db",
+      TAOQIBAO_FAMILY_ID: "main",
+      TAOQIBAO_CORE_AGENT_ID: "main",
+      TAOQIBAO_OWNER_TELEGRAM_USER_IDS: "123456789",
+      TELEGRAM_BOT_TOKEN: "token",
+      TAOQIBAO_MODEL_BASE_URL: "https://api.example.com/v1",
+      TAOQIBAO_MODEL_API_KEY: "key",
+      TAOQIBAO_MODEL_NAME: "model",
+      TAOQIBAO_MODEL_TIMEOUT_MS: "30000",
+      TAOQIBAO_LOG_LEVEL: "info",
+    });
+    const enabled = loadConfig({
+      TAOQIBAO_STATE_DB: "$HOME/.openpeach/families/main/state.db",
+      TAOQIBAO_FAMILY_ID: "main",
+      TAOQIBAO_CORE_AGENT_ID: "main",
+      TAOQIBAO_OWNER_TELEGRAM_USER_IDS: "123456789",
+      TELEGRAM_BOT_TOKEN: "token",
+      TAOQIBAO_MODEL_BASE_URL: "https://api.example.com/v1",
+      TAOQIBAO_MODEL_API_KEY: "key",
+      TAOQIBAO_MODEL_NAME: "model",
+      TAOQIBAO_MODEL_TIMEOUT_MS: "30000",
+      TAOQIBAO_LOG_LEVEL: "info",
+      OPENPEACH_ENABLE_STORY_BUNNY: "true",
+    });
+
+    expect(disabled.enableStoryBunnyToy).toBe(false);
+    expect(enabled.enableStoryBunnyToy).toBe(true);
+  });
 });

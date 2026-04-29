@@ -334,6 +334,704 @@ describe("handleHumanEnvelope", () => {
     }
   });
 
+  it("routes lab intents to a lab session and lab runtime", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let mainCalls = 0;
+      let labCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          mainCalls += 1;
+          return "main should not handle lab work";
+        },
+      });
+      const labRuntime = {
+        async handleTurn(input: Parameters<typeof mainRuntime.handleTurn>[0]) {
+          labCalls += 1;
+          expect(input.session.coreAgentId).toBe("lab");
+          expect(input.task).toMatchObject({
+            targetAgent: "lab",
+            scopeKind: "project",
+            priority: "P3",
+            memoryPolicy: "candidate_memory",
+          });
+          return {
+            replyText: "Lab captured a reviewable workflow candidate.",
+            outboxId: "outbox:telegram:tg-lab-route",
+          };
+        },
+      };
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-lab-route",
+          text: "lab: turn this task trace into a reusable skill",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          labRuntime,
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        replyText: "Lab captured a reviewable workflow candidate.",
+        outboxId: "outbox:telegram:tg-lab-route",
+      });
+      expect(mainCalls).toBe(0);
+      expect(labCalls).toBe(1);
+
+      const sessionRow = db
+        .prepare(
+          `
+            SELECT core_agent_id, session_key
+            FROM sessions
+            WHERE core_agent_id = 'lab'
+          `,
+        )
+        .get() as { core_agent_id: string; session_key: string } | undefined;
+
+      expect(sessionRow?.session_key).toBe(
+        "family:family-main/agent:lab/channel:telegram/account:bot-main/peer:456/scene:default/thread:dm",
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  it("routes explicit confirmation messages to the home runtime", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let mainCalls = 0;
+      let confirmCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          mainCalls += 1;
+          return "main should not confirm device work";
+        },
+      });
+      const homeRuntime = {
+        async handleTurn() {
+          throw new Error("home handleTurn should not run for confirmations");
+        },
+        async confirmAwaitingDeviceAction(input: {
+          confirmationTaskId: string;
+        }) {
+          confirmCalls += 1;
+          expect(input.confirmationTaskId).toBe("task:home-risk-1");
+          return {
+            replyText: "Front Camera acknowledged start_recording.",
+            outboxId: "outbox:telegram:tg-home-confirm",
+          };
+        },
+      };
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-home-confirm",
+          text: "confirm task:home-risk-1",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          homeRuntime,
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        replyText: "Front Camera acknowledged start_recording.",
+        outboxId: "outbox:telegram:tg-home-confirm",
+      });
+      expect(mainCalls).toBe(0);
+      expect(confirmCalls).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("routes Chinese confirmation messages to the home runtime", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let confirmCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          return "main should not confirm device work";
+        },
+      });
+      const homeRuntime = {
+        async handleTurn() {
+          throw new Error("home handleTurn should not run for confirmations");
+        },
+        async confirmAwaitingDeviceAction(input: {
+          confirmationTaskId: string;
+        }) {
+          confirmCalls += 1;
+          expect(input.confirmationTaskId).toBe("task:home-risk-zh");
+          return {
+            replyText: "Front Camera acknowledged start_recording.",
+            outboxId: "outbox:telegram:tg-home-confirm-zh",
+          };
+        },
+      };
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-home-confirm-zh",
+          text: "\u786e\u8ba4 task:home-risk-zh",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          homeRuntime,
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        replyText: "Front Camera acknowledged start_recording.",
+        outboxId: "outbox:telegram:tg-home-confirm-zh",
+      });
+      expect(confirmCalls).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("routes owner-only skill review commands without calling the model", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let modelCalls = 0;
+      let reviewCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          modelCalls += 1;
+          return "main should not handle skill review commands";
+        },
+      });
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-skill-review",
+          text: "/skill_review skill-candidate-1",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          skillReview: {
+            reviewCandidate(candidateId) {
+              reviewCalls += 1;
+              expect(candidateId).toBe("skill-candidate-1");
+              return "Skill candidate skill-candidate-1 can be promoted.";
+            },
+          },
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        replyText: "Skill candidate skill-candidate-1 can be promoted.",
+        outboxId: "outbox:telegram:admin:bot-main:456:tg-skill-review",
+      });
+      expect(modelCalls).toBe(0);
+      expect(reviewCalls).toBe(1);
+
+      const tasksCount = db
+        .prepare(`SELECT COUNT(*) AS count FROM tasks`)
+        .get() as { count: number };
+      const outboxRow = db
+        .prepare(
+          `
+            SELECT outbox_id, target_ref, payload_json, status
+            FROM outbox
+            WHERE outbox_id = ?
+          `,
+        )
+        .get(result.ok ? result.outboxId : "") as
+        | {
+            outbox_id: string;
+            target_ref: string;
+            payload_json: string;
+            status: string;
+          }
+        | undefined;
+
+      expect(tasksCount.count).toBe(0);
+      expect(outboxRow).toEqual({
+        outbox_id: "outbox:telegram:admin:bot-main:456:tg-skill-review",
+        target_ref: "456",
+        payload_json: JSON.stringify({
+          chatId: "456",
+          text: "Skill candidate skill-candidate-1 can be promoted.",
+          replyToMessageId: "tg-skill-review",
+        }),
+        status: "pending",
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("does not let a denied identity run skill review commands", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let modelCalls = 0;
+      let reviewCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          modelCalls += 1;
+          return "main should not handle denied admin commands";
+        },
+      });
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-skill-review-denied",
+          text: "/skill_review skill-candidate-1",
+          peerId: "999",
+          chatId: "999",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          skillReview: {
+            reviewCandidate() {
+              reviewCalls += 1;
+              return "should never happen";
+            },
+          },
+        },
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        reason: "Telegram user is not allowlisted",
+      });
+      expect(modelCalls).toBe(0);
+      expect(reviewCalls).toBe(0);
+
+      const outboxCount = db
+        .prepare(`SELECT COUNT(*) AS count FROM outbox`)
+        .get() as { count: number };
+
+      expect(outboxCount.count).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("requires owner role for skill review commands even when identity is allowed", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let modelCalls = 0;
+      let reviewCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          modelCalls += 1;
+          return "main should not handle non-owner admin commands";
+        },
+      });
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-skill-review-non-owner",
+          text: "/skill_review skill-candidate-1",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          identityResolver() {
+            return {
+              allowed: true,
+              channelIdentityId: "telegram:bot-main:456",
+              personId: "person:telegram:456",
+              familyId: "family-main",
+              role: "adult_member",
+            };
+          },
+          skillReview: {
+            reviewCandidate() {
+              reviewCalls += 1;
+              return "should never happen";
+            },
+          },
+        },
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        reason: "Owner role is required for skill management commands",
+      });
+      expect(modelCalls).toBe(0);
+      expect(reviewCalls).toBe(0);
+
+      const outboxCount = db
+        .prepare(`SELECT COUNT(*) AS count FROM outbox`)
+        .get() as { count: number };
+      expect(outboxCount.count).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("accepts Telegram bot username suffixes on skill review commands", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let reviewCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          return "main should not handle skill review commands";
+        },
+      });
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-skill-review-botname",
+          text: "/skill_review@kxf_openpeach_bot skill-candidate-2",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          skillReview: {
+            reviewCandidate(candidateId) {
+              reviewCalls += 1;
+              expect(candidateId).toBe("skill-candidate-2");
+              return "Skill candidate skill-candidate-2 is blocked.";
+            },
+          },
+        },
+      });
+
+      expect(result).toMatchObject({
+        ok: true,
+        replyText: "Skill candidate skill-candidate-2 is blocked.",
+      });
+      expect(reviewCalls).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("queues a not-found reply for unknown skill candidates", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let reviewCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          return "main should not handle skill review commands";
+        },
+      });
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-skill-review-missing",
+          text: "/skill_review missing-candidate",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          skillReview: {
+            reviewCandidate(candidateId) {
+              reviewCalls += 1;
+              expect(candidateId).toBe("missing-candidate");
+              return undefined;
+            },
+          },
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        replyText: "Skill candidate not found: missing-candidate",
+        outboxId: "outbox:telegram:admin:bot-main:456:tg-skill-review-missing",
+      });
+      expect(reviewCalls).toBe(1);
+
+      const outboxRow = db
+        .prepare(
+          `
+            SELECT payload_json
+            FROM outbox
+            WHERE outbox_id = ?
+          `,
+        )
+        .get(result.ok ? result.outboxId : "") as
+        | { payload_json: string }
+        | undefined;
+
+      expect(JSON.parse(outboxRow?.payload_json ?? "null")).toMatchObject({
+        text: "Skill candidate not found: missing-candidate",
+        replyToMessageId: "tg-skill-review-missing",
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("returns skill review usage for incomplete commands without calling the model", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let modelCalls = 0;
+      let reviewCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          modelCalls += 1;
+          return "main should not handle incomplete admin commands";
+        },
+      });
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-skill-review-usage",
+          text: "/skill_review",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          skillReview: {
+            reviewCandidate() {
+              reviewCalls += 1;
+              return "should never happen";
+            },
+          },
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        replyText: "Usage: /skill_review <candidate_id>",
+        outboxId: "outbox:telegram:admin:bot-main:456:tg-skill-review-usage",
+      });
+      expect(modelCalls).toBe(0);
+      expect(reviewCalls).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("routes owner-only skill approval commands without calling the model", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let modelCalls = 0;
+      let approveCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          modelCalls += 1;
+          return "main should not handle skill approval commands";
+        },
+      });
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-skill-approve",
+          text: "/skill_approve skill-candidate-risky reviewed by owner",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          skillReview: {
+            reviewCandidate() {
+              return "review should not run";
+            },
+            approveCandidate(candidateId, input) {
+              approveCalls += 1;
+              expect(candidateId).toBe("skill-candidate-risky");
+              expect(input).toEqual({
+                reviewerIdentity: "telegram:456",
+                reason: "reviewed by owner",
+              });
+              return "Skill candidate skill-candidate-risky approved.";
+            },
+          },
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        replyText: "Skill candidate skill-candidate-risky approved.",
+        outboxId: "outbox:telegram:admin:bot-main:456:tg-skill-approve",
+      });
+      expect(modelCalls).toBe(0);
+      expect(approveCalls).toBe(1);
+
+      const tasksCount = db
+        .prepare(`SELECT COUNT(*) AS count FROM tasks`)
+        .get() as { count: number };
+      expect(tasksCount.count).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("routes owner-only skill rejection commands without calling the model", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let rejectCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          return "main should not handle skill rejection commands";
+        },
+      });
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-skill-reject",
+          text: "/skill_reject skill-candidate-risky too risky for home",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          skillReview: {
+            reviewCandidate() {
+              return "review should not run";
+            },
+            rejectCandidate(candidateId, input) {
+              rejectCalls += 1;
+              expect(candidateId).toBe("skill-candidate-risky");
+              expect(input).toEqual({
+                reviewerIdentity: "telegram:456",
+                reason: "too risky for home",
+              });
+              return "Skill candidate skill-candidate-risky rejected.";
+            },
+          },
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        replyText: "Skill candidate skill-candidate-risky rejected.",
+        outboxId: "outbox:telegram:admin:bot-main:456:tg-skill-reject",
+      });
+      expect(rejectCalls).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("returns skill approval usage for incomplete commands without calling the model", async () => {
+    const db = openTestDb();
+
+    try {
+      migrate(db);
+      const repositories = createRepositories(db);
+      let modelCalls = 0;
+      const mainRuntime = createRuntime(repositories, {
+        async complete() {
+          modelCalls += 1;
+          return "main should not handle incomplete approval commands";
+        },
+      });
+
+      const result = await handleHumanEnvelope({
+        envelope: createEnvelope({
+          messageId: "tg-skill-approve-usage",
+          text: "/skill_approve",
+        }),
+        deps: {
+          config: {
+            familyId: "family-main",
+            ownerTelegramUserIds: ["456"],
+          },
+          repositories,
+          runtime: mainRuntime,
+          skillReview: {
+            reviewCandidate() {
+              return "review should not run";
+            },
+          },
+        },
+      });
+
+      expect(result).toEqual({
+        ok: true,
+        replyText: "Usage: /skill_approve <candidate_id> [reason]",
+        outboxId: "outbox:telegram:admin:bot-main:456:tg-skill-approve-usage",
+      });
+      expect(modelCalls).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
   function openTestDb() {
     dir = mkdtempSync(join(tmpdir(), "openpeach-gateway-"));
     return openPeachDb(join(dir, "state.db"));

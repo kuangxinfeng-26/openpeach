@@ -20,6 +20,8 @@
     "start": "node apps/gateway/dist/index.js",
     "doctor": "tsx apps/gateway/src/doctor.ts",
     "model:sync": "node scripts/sync-openpeach-env-from-profile.mjs",
+    "skill:review": "tsx scripts/skill-review.ts",
+    "skill:replay": "tsx scripts/skill-replay.ts",
     "phase0:check": "node scripts/check-phase0.mjs",
     "release:check": "node scripts/check-release.mjs",
     "install:linux": "bash deploy/linux/install-openpeach.sh"

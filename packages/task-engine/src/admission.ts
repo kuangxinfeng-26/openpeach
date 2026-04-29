@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { parseDeviceIntent } from "./device-intent.js";
 import { TaskPacketSchema, type TaskPacket } from "./task-packet.js";
 
 export type RequesterIdentity = {
@@ -15,6 +16,7 @@ export type AdmitTaskInput = {
   idempotencyKey?: string;
   messageId?: string;
   requesterIdentity: RequesterIdentity;
+  enabledDeviceIds?: string[];
 };
 
 export type AdmissionDecision = {
@@ -51,7 +53,9 @@ export function admitTask(input: AdmitTaskInput): AdmissionDecision {
     input.requesterIdentity.personId ??
     input.requesterIdentity.channelIdentityId ??
     "owner";
-  const route = resolveTaskRoute(objective);
+  const route = resolveTaskRoute(objective, {
+    enabledDeviceIds: input.enabledDeviceIds,
+  });
   const task = TaskPacketSchema.parse({
     taskId:
       input.taskId ??
@@ -62,22 +66,32 @@ export function admitTask(input: AdmitTaskInput): AdmissionDecision {
     sourceSessionId: input.sessionId,
     requesterIdentityId,
     targetAgent: route.targetAgent,
-    priority: route.targetAgent === "home" ? "P1" : "P0",
-    executionMode: route.targetAgent === "home" ? "microtask" : "turn",
+    priority: route.targetAgent === "home" ? "P1" : route.targetAgent === "lab" ? "P3" : "P0",
+    executionMode: route.targetAgent === "home"
+      ? "microtask"
+      : route.targetAgent === "lab"
+        ? "job"
+        : "turn",
     acceptanceContract: route.targetAgent === "home"
       ? "Read or safely control the requested household device."
-      : "Respond to the current private conversation turn.",
+      : route.targetAgent === "lab"
+        ? "Analyze the project or self-improvement request and extract reusable procedure candidates."
+        : "Respond to the current private conversation turn.",
     reportingContract: "Return the answer in the source session.",
     escalationPolicy: route.targetAgent === "home"
       ? "Require confirmation for high-risk home actions."
-      : "Deny unsupported fan-out in Phase 0.",
-    resourceLocks: route.scopeRef ? [`device:${route.scopeRef}`] : [],
+      : route.targetAgent === "lab"
+        ? "Keep generated skills in shadow status until replay and owner review pass."
+        : "Deny unsupported fan-out in Phase 0.",
+    resourceLocks: route.scopeRef
+      ? [route.targetAgent === "home" ? `device:${route.scopeRef}` : `project:${route.scopeRef}`]
+      : [],
     budget: {
-      runtimeMs: route.targetAgent === "home" ? 10_000 : 30_000,
-      toolCalls: route.targetAgent === "home" ? 2 : 8,
+      runtimeMs: route.targetAgent === "home" ? 10_000 : route.targetAgent === "lab" ? 60_000 : 30_000,
+      toolCalls: route.targetAgent === "home" ? 2 : route.targetAgent === "lab" ? 6 : 8,
       childTasks: 0,
     },
-    memoryPolicy: "session_only",
+    memoryPolicy: route.targetAgent === "lab" ? "candidate_memory" : "session_only",
   });
 
   return {
@@ -88,14 +102,25 @@ export function admitTask(input: AdmitTaskInput): AdmissionDecision {
 }
 
 export type TaskRoute = {
-  targetAgent: "main" | "home";
-  scopeKind: "conversation" | "device";
+  targetAgent: "main" | "home" | "lab";
+  scopeKind: "conversation" | "device" | "project";
   scopeRef?: string;
 };
 
-export function resolveTaskRoute(text: string): TaskRoute {
+export function resolveTaskRoute(
+  text: string,
+  options: { enabledDeviceIds?: string[] } = {},
+): TaskRoute {
+  if (detectLabIntent(text)) {
+    return {
+      targetAgent: "lab",
+      scopeKind: "project",
+      scopeRef: "openpeach-self-improvement",
+    };
+  }
+
   const deviceIntent = detectDeviceIntent(text);
-  if (deviceIntent) {
+  if (deviceIntent && isDeviceEnabled(deviceIntent.deviceId, options.enabledDeviceIds)) {
     return {
       targetAgent: "home",
       scopeKind: "device",
@@ -109,6 +134,18 @@ export function resolveTaskRoute(text: string): TaskRoute {
   };
 }
 
+function detectLabIntent(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return (
+    normalized.startsWith("lab:") ||
+    normalized.includes("reusable skill") ||
+    normalized.includes("self-improvement") ||
+    normalized.includes("skill candidate") ||
+    normalized.includes("github idea") ||
+    normalized.includes("ai toy project")
+  );
+}
+
 function scopedTaskId(sessionId: string, rawId: string | undefined): string {
   if (!rawId) {
     return randomUUID();
@@ -118,23 +155,13 @@ function scopedTaskId(sessionId: string, rawId: string | undefined): string {
 }
 
 function detectDeviceIntent(text: string): { deviceId: string } | undefined {
-  const normalized = text.toLowerCase();
+  return parseDeviceIntent(text);
+}
 
-  if (
-    normalized.includes("living room lamp") ||
-    normalized.includes("living room light") ||
-    normalized.includes("\u5ba2\u5385\u706f")
-  ) {
-    return { deviceId: "mock:living-room-lamp" };
-  }
-
-  if (
-    normalized.includes("camera") ||
-    normalized.includes("recording") ||
-    normalized.includes("\u6444\u50cf\u5934")
-  ) {
-    return { deviceId: "mock:front-camera" };
-  }
-
-  return undefined;
+function isDeviceEnabled(
+  deviceId: string,
+  enabledDeviceIds: string[] | undefined,
+): boolean {
+  const defaultDeviceIds = new Set(["mock:living-room-lamp", "mock:front-camera"]);
+  return defaultDeviceIds.has(deviceId) || (enabledDeviceIds ?? []).includes(deviceId);
 }

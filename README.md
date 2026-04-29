@@ -12,6 +12,9 @@ Phase 0 is complete and Phase 2 has started with a narrow home-device MVP. The v
 - `main` agent runtime loaded from an OpenPeach workspace `agent.md` profile.
 - `home` agent routing for mock household device work while preserving a separate home session.
 - Mock `DeviceAdapter` support for a living-room lamp and high-risk camera confirmation flow.
+- Optional `@openpeach/toy-story-bunny` package with the AI Story Bunny bridge contract, mock bridge, and child-safe toy `DeviceAdapter`.
+- Optional Story Bunny gateway flag, composite device adapter, and Home Assistant adapter boundary for explicitly configured entities.
+- Initial Phase 3 `@openpeach/skill-registry` with shadow candidates and guarded promotion.
 - SQLite-backed sessions, messages, task records, events, device events, and outbox state.
 - External OpenAI-compatible model configuration through `.env` or a private model profile.
 - Linux installer with Node.js, systemd service rendering, runtime workspace initialization, and optional mihomo sidecar support.
@@ -37,6 +40,10 @@ Fill the real values in `.env` before starting the gateway:
 - `TAOQIBAO_MODEL_BASE_URL`
 - `TAOQIBAO_MODEL_API_KEY`
 - `TAOQIBAO_MODEL_NAME`
+
+Optional preview flags:
+
+- `OPENPEACH_ENABLE_STORY_BUNNY=true` exposes `toy:story-bunny` through the `home` device adapter. It stays disabled by default.
 
 The `TAOQIBAO_*` environment prefix is currently kept for compatibility with the Phase 0 code and installer. New user-facing docs and package names use OpenPeach.
 
@@ -106,6 +113,8 @@ Useful commands:
 - `npm run install:linux` runs the Linux installer from the current checkout.
 
 Phase 2 home-device details live in [docs/phase2-home-device-mvp.md](./docs/phase2-home-device-mvp.md).
+The optional AI toy bridge package is documented in [docs/optional-toy-story-bunny.md](./docs/optional-toy-story-bunny.md).
+The first Phase 3 skill registry slice is documented in [docs/phase3-skill-registry-mvp.md](./docs/phase3-skill-registry-mvp.md).
 
 ## Security
 

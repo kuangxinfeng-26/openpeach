@@ -20,6 +20,7 @@ export type GatewayConfig = {
   modelName: string;
   modelTimeoutMs: number;
   logLevel: string;
+  enableStoryBunnyToy: boolean;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
@@ -46,6 +47,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
       "TAOQIBAO_MODEL_TIMEOUT_MS",
     ),
     logLevel: requireEnv(env, "TAOQIBAO_LOG_LEVEL"),
+    enableStoryBunnyToy: parseBooleanFlag(env.OPENPEACH_ENABLE_STORY_BUNNY),
   };
 }
 
@@ -112,6 +114,10 @@ function parsePositiveInt(value: string, key: string): number {
 
   const parsed = Number.parseInt(value, 10);
   return parsed;
+}
+
+function parseBooleanFlag(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === "true";
 }
 
 function requireMainAgentId(value: string | undefined): "main" {

@@ -13,3 +13,13 @@ export function openPeachDb(path: string): OpenPeachDb {
 
   return db;
 }
+
+export function openPeachReadonlyDb(path: string): OpenPeachDb {
+  const db = new Database(path, {
+    fileMustExist: true,
+    readonly: true,
+  });
+  db.pragma("foreign_keys = ON");
+
+  return db;
+}

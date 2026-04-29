@@ -11,7 +11,7 @@ type AllowedIdentity = {
   channelIdentityId: string;
   personId: string;
   familyId: string;
-  role: "owner";
+  role: "owner" | "adult_member" | "child_member" | "guest";
 };
 
 type DeniedIdentity = {

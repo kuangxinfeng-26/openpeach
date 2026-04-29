@@ -8,6 +8,7 @@ import {
   openPeachDb,
 } from "../../store-sqlite/src/index.js";
 import { admitTask } from "./admission.js";
+import { parseDeviceIntent } from "./device-intent.js";
 import { TaskRegistry } from "./task-registry.js";
 
 describe("task engine", () => {
@@ -65,6 +66,77 @@ describe("task engine", () => {
         resourceLocks: ["device:mock:living-room-lamp"],
         memoryPolicy: "session_only",
       },
+    });
+  });
+
+  it("routes self-improvement and project requests to lab as candidate-memory work", () => {
+    const decision = admitTask({
+      text: "lab: turn this task trace into a reusable skill",
+      sessionId: "session-lab-1",
+      messageId: "message-lab-1",
+      requesterIdentity: { role: "owner", allowed: true, personId: "person-1" },
+    });
+
+    expect(decision).toMatchObject({
+      admitted: true,
+      executionMode: "job",
+      task: {
+        taskId: "task:session-lab-1:message-lab-1",
+        scopeKind: "project",
+        scopeRef: "openpeach-self-improvement",
+        targetAgent: "lab",
+        priority: "P3",
+        executionMode: "job",
+        resourceLocks: ["project:openpeach-self-improvement"],
+        memoryPolicy: "candidate_memory",
+      },
+    });
+  });
+
+  it("parses device intent without coupling routing to keyword checks", () => {
+    expect(parseDeviceIntent("\u8bf7\u5e2e\u6211\u6253\u5f00\u5ba2\u5385\u706f")).toEqual({
+      deviceId: "mock:living-room-lamp",
+      matchedAlias: "\u5ba2\u5385\u706f",
+    });
+
+    expect(parseDeviceIntent("start camera recording")).toEqual({
+      deviceId: "mock:front-camera",
+      matchedAlias: "camera",
+    });
+
+    expect(parseDeviceIntent("chat with me")).toBeUndefined();
+  });
+
+  it("keeps optional toy intents out of home routing until enabled", () => {
+    expect(parseDeviceIntent("trigger story bunny bedtime")).toEqual({
+      deviceId: "toy:story-bunny",
+      matchedAlias: "story bunny",
+    });
+
+    expect(
+      admitTask({
+        text: "trigger story bunny bedtime",
+        sessionId: "session-toy-default",
+        messageId: "message-toy-default",
+        requesterIdentity: { role: "owner", allowed: true, personId: "person-1" },
+      }).task,
+    ).toMatchObject({
+      targetAgent: "main",
+      scopeKind: "conversation",
+    });
+
+    expect(
+      admitTask({
+        text: "trigger story bunny bedtime",
+        sessionId: "session-toy-enabled",
+        messageId: "message-toy-enabled",
+        requesterIdentity: { role: "owner", allowed: true, personId: "person-1" },
+        enabledDeviceIds: ["toy:story-bunny"],
+      }).task,
+    ).toMatchObject({
+      targetAgent: "home",
+      scopeKind: "device",
+      scopeRef: "toy:story-bunny",
     });
   });
 

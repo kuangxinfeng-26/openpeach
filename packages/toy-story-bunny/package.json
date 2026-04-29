@@ -1,0 +1,8 @@
+{
+  "name": "@openpeach/toy-story-bunny",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/packages/toy-story-bunny/src/index.js",
+  "types": "dist/packages/toy-story-bunny/src/index.d.ts"
+}

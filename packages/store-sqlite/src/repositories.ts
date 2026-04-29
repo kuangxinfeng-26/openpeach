@@ -24,6 +24,13 @@ export interface InsertEventInput {
   createdAtMs: number;
 }
 
+export interface EventRecord {
+  eventType: string;
+  taskId?: string;
+  sessionId?: string;
+  payloadJson: string;
+}
+
 export interface InsertOutboxOnceInput {
   outboxId: string;
   idempotencyKey: string;
@@ -93,6 +100,19 @@ interface SessionKeyRow {
 interface TaskRow {
   task_id: string;
   status: TaskRepositoryStatus;
+}
+
+interface TaskPacketRow {
+  task_id: string;
+  status: TaskRepositoryStatus;
+  packet_json: string;
+}
+
+interface EventRow {
+  event_type: string;
+  task_id: string | null;
+  session_id: string | null;
+  payload_json: string;
 }
 
 export function createRepositories(db: OpenPeachDb) {
@@ -176,6 +196,13 @@ export function createRepositories(db: OpenPeachDb) {
       @payloadJson,
       @createdAtMs
     )
+  `);
+
+  const listEventsForTaskStatement = db.prepare(`
+    SELECT event_type, task_id, session_id, payload_json
+    FROM events
+    WHERE task_id = ?
+    ORDER BY created_at_ms, event_id
   `);
 
   const insertOutboxOnceStatement = db.prepare(`
@@ -264,6 +291,12 @@ export function createRepositories(db: OpenPeachDb) {
 
   const getTaskStatement = db.prepare(`
     SELECT task_id, status
+    FROM tasks
+    WHERE task_id = ?
+  `);
+
+  const getTaskPacketStatement = db.prepare(`
+    SELECT task_id, status, packet_json
     FROM tasks
     WHERE task_id = ?
   `);
@@ -428,6 +461,40 @@ export function createRepositories(db: OpenPeachDb) {
       };
     },
 
+    getTaskPacket(
+      taskId: string,
+    ):
+      | {
+          taskId: string;
+          status: TaskRepositoryStatus;
+          packetJson: string;
+        }
+      | undefined {
+      const row = getTaskPacketStatement.get(taskId) as TaskPacketRow | undefined;
+      if (!row) {
+        return undefined;
+      }
+
+      return {
+        taskId: row.task_id,
+        status: row.status,
+        packetJson: row.packet_json,
+      };
+    },
+
+    listEventsForTask(taskId: string): EventRecord[] {
+      return listEventsForTaskStatement.all(taskId).map((row) => {
+        const event = row as EventRow;
+
+        return {
+          eventType: event.event_type,
+          taskId: event.task_id ?? undefined,
+          sessionId: event.session_id ?? undefined,
+          payloadJson: event.payload_json,
+        };
+      });
+    },
+
     searchMessages(query: string): SearchMessageResult[] {
       return searchMessagesStatement.all(toFtsPrefixQuery(query)).map((row) => {
         const result = row as SearchMessageRow;
@@ -462,6 +529,7 @@ function toFtsPrefixQuery(query: string): string {
 function isAllowedTaskTransition(from: string, to: string): boolean {
   return (
     (from === "admitted" && to === "running") ||
+    (from === "awaiting_confirmation" && to === "running") ||
     (from === "running" &&
       (to === "awaiting_confirmation" ||
         to === "succeeded" ||

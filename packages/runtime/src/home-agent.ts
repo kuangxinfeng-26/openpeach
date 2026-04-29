@@ -89,7 +89,7 @@ export class HomeAgentRuntime {
           action: plan.action,
           reason: policy.reason,
         });
-        replyText = `${plan.displayName} ${plan.action} needs confirmation before OpenPeach executes it.`;
+        replyText = `${plan.displayName} ${plan.action} needs confirmation before OpenPeach executes it. Reply "confirm task:${task.taskId}" to continue.`;
         finalTaskStatus = "awaiting_confirmation";
       } else if (policy.decision === "deny") {
         replyText = policy.reason;
@@ -165,6 +165,96 @@ export class HomeAgentRuntime {
 
       throw error;
     }
+  }
+
+  async confirmAwaitingDeviceAction(
+    input: HomeAgentConfirmationInput,
+  ): Promise<{ replyText: string; outboxId: string }> {
+    const taskRecord = this.deps.repositories.getTaskPacket(input.confirmationTaskId);
+    if (!taskRecord) {
+      throw new Error(`task not found: ${input.confirmationTaskId}`);
+    }
+    if (taskRecord.status !== "awaiting_confirmation") {
+      throw new Error(
+        `task is not awaiting confirmation: ${input.confirmationTaskId}`,
+      );
+    }
+    if (input.requester.role !== "owner") {
+      throw new Error("Requester is not allowed to confirm family device actions");
+    }
+
+    const task = JSON.parse(taskRecord.packetJson) as TaskPacket;
+    if (task.sourceSessionId !== input.session.sessionId) {
+      throw new Error("Confirmation session does not match the task session");
+    }
+    const plan = await this.planDeviceAction(task, task.objective);
+    const userMessageKey = userMessageId(
+      input.session.sessionId,
+      input.envelope.messageId,
+    );
+    const assistantMessageKey = assistantMessageId(
+      input.session.sessionId,
+      input.envelope.messageId,
+    );
+
+    this.appendMessageIfMissing({
+      messageId: userMessageKey,
+      sessionId: input.session.sessionId,
+      role: "user",
+      text: input.envelope.text,
+      timestampMs: input.envelope.timestampMs,
+    });
+    this.deps.repositories.updateTaskStatus(task.taskId, "running");
+
+    const result = await this.deps.deviceAdapter.executeCommand({
+      commandId: `device-command:${task.taskId}:${plan.action}`,
+      deviceId: task.scopeRef,
+      action: plan.action,
+    });
+    this.recordCommandAcknowledged({
+      session: input.session,
+      task,
+      result,
+    });
+    const replyText = formatCommandReply(plan.displayName, result);
+    this.appendMessageIfMissing({
+      messageId: assistantMessageKey,
+      sessionId: input.session.sessionId,
+      role: "assistant",
+      text: replyText,
+      timestampMs: input.envelope.timestampMs,
+    });
+
+    const outboxId = outboxMessageId(
+      input.session.sessionId,
+      input.envelope.messageId,
+    );
+    this.deps.repositories.insertOutboxOnce({
+      outboxId,
+      idempotencyKey: `telegram:reply:${input.session.sessionId}:${input.envelope.messageId}`,
+      channel: "telegram",
+      targetRef: input.envelope.chatId,
+      payloadJson: JSON.stringify({
+        chatId: input.envelope.chatId,
+        text: replyText,
+        replyToMessageId: input.envelope.messageId,
+      }),
+    });
+    this.markTaskSucceeded(task.taskId);
+    this.deps.emit({
+      type: "task.completed",
+      sessionId: input.session.sessionId,
+      taskId: task.taskId,
+      payload: { status: "succeeded", confirmedBy: input.envelope.messageId },
+    });
+    this.deps.emit({
+      type: "reply.queued",
+      sessionId: input.session.sessionId,
+      taskId: task.taskId,
+      payload: { outboxId },
+    });
+
+    return { replyText, outboxId };
   }
 
   private async planDeviceAction(
@@ -402,6 +492,19 @@ export type HomeAgentRepositories = {
           | "failed";
       }
     | undefined;
+  getTaskPacket(taskId: string):
+    | {
+        taskId: string;
+        status:
+          | "created"
+          | "admitted"
+          | "running"
+          | "awaiting_confirmation"
+          | "succeeded"
+          | "failed";
+        packetJson: string;
+      }
+    | undefined;
   updateTaskStatus(
     taskId: string,
     status: "running" | "awaiting_confirmation" | "succeeded" | "failed",
@@ -431,8 +534,33 @@ export type HomeAgentTurnInput = {
   requester: HomeAgentRequester;
 };
 
+export type HomeAgentConfirmationInput = {
+  confirmationTaskId: string;
+  envelope: HumanEnvelope;
+  session: SessionContext;
+  requester: HomeAgentRequester;
+};
+
 function inferAction(text: string): string {
   const normalized = text.toLowerCase();
+  if (
+    (normalized.includes("story bunny") ||
+      normalized.includes("\u6545\u4e8b\u5154") ||
+      normalized.includes("\u6dd8\u6c14\u5154") ||
+      normalized.includes("\u73a9\u5177")) &&
+    (normalized.includes("bedtime") || normalized.includes("\u7761\u524d"))
+  ) {
+    return "trigger_bedtime_scene";
+  }
+  if (
+    (normalized.includes("story bunny") ||
+      normalized.includes("\u6545\u4e8b\u5154") ||
+      normalized.includes("\u6dd8\u6c14\u5154") ||
+      normalized.includes("\u73a9\u5177")) &&
+    (normalized.includes("play") || normalized.includes("\u73a9"))
+  ) {
+    return "trigger_play_scene";
+  }
   if (
     normalized.includes("start camera recording") ||
     normalized.includes("start recording") ||
