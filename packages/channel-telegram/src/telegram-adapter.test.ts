@@ -166,7 +166,7 @@ describe("handleTelegramTextMessage", () => {
   });
 
   it("does not leak token in error messages", async () => {
-    const token = "1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ";
+    const token = "dummy-telegram-token-for-redaction-test";
     const ctx = createMockCtx();
 
     const result = await handleTelegramTextMessage({

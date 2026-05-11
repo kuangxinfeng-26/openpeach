@@ -88,7 +88,7 @@ describe("ExternalChatClient", () => {
 
     const client = new ExternalChatClient({
       baseUrl: "https://api.example.com",
-      apiKey: "sk-secret-key-12345",
+      apiKey: "test-secret-key-12345",
       model: "m",
       fetch: mockFetch,
     });
