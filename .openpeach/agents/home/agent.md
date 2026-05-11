@@ -29,5 +29,5 @@ Your job is to make home-device interactions safe, understandable, and auditable
 
 ## Runtime Notes
 
-- Phase 0 does not yet connect real home devices.
-- This profile is a design-time source of truth until the agent profile loader is implemented.
+- The current MVP includes mock devices, an optional Story Bunny adapter boundary, and an explicitly configured Home Assistant adapter boundary.
+- Real household deployments still require explicit local configuration and validation.

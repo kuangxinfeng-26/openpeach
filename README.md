@@ -6,7 +6,7 @@ Before making agent-driven changes in this repository, read [AGENTS.md](./AGENTS
 
 ## Current Status
 
-Phase 0 is complete and Phase 2 has started with a narrow home-device MVP. The verified runtime path currently includes:
+Phase 0, Phase 2, and the first guarded Phase 3 slice are complete enough for local development. The verified runtime path currently includes:
 
 - Telegram gateway with Bot API polling and typing/read-style chat actions.
 - `main` agent runtime loaded from an OpenPeach workspace `agent.md` profile.
@@ -19,7 +19,7 @@ Phase 0 is complete and Phase 2 has started with a narrow home-device MVP. The v
 - External OpenAI-compatible model configuration through `.env` or a private model profile.
 - Linux installer with Node.js, systemd service rendering, runtime workspace initialization, and optional mihomo sidecar support.
 
-Planned next phases add personal WeChat, real Home Assistant/camera/toy adapters, `lab` skill evolution, multi-user household permissions, camera event summaries, AI toy integration, and richer memory/search flows.
+Planned next phases add personal WeChat, real Home Assistant/camera/toy deployments, richer `lab` tools, multi-user household permissions, camera event summaries, AI toy integration, and richer memory/search flows.
 
 ## Quick Start for Development
 
@@ -109,7 +109,7 @@ Useful commands:
 - `npm run model:sync` syncs `.openpeach/model.runtime.local.toml` into `.env` when you keep local model settings in a private file.
 - `npm run phase0:check` runs `check`, `test`, and `doctor` as a readiness pass.
 - `npm run release:check` runs release hygiene checks, `npm audit`, `check`, `test`, `build`, and `doctor`.
-- `npm run dev` starts the Phase 0 gateway from TypeScript source.
+- `npm run dev` starts the gateway from TypeScript source.
 - `npm run install:linux` runs the Linux installer from the current checkout.
 
 Phase 2 home-device details live in [docs/phase2-home-device-mvp.md](./docs/phase2-home-device-mvp.md).

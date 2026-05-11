@@ -4,7 +4,7 @@ import type { SessionContext } from "../../session-kernel/src/index.js";
 import type { TaskPacket } from "../../task-engine/src/index.js";
 
 const SYSTEM_PROMPT =
-  "You are OpenPeach main agent. Be warm, reliable, and honest. In Phase 0, handle normal conversation and explicit history lookup only. Do not pretend that home devices, WeChat, cameras, or AI toys are already connected.";
+  "You are OpenPeach main agent. Be warm, reliable, and honest. Handle companionship, conversation, explicit history lookup, and user-facing orchestration. Route supported home-device and lab-style work through the gateway instead of pretending to execute it yourself. Do not claim unsupported channels, real Home Assistant devices, WeChat, raw cameras, or AI toy hardware are connected.";
 
 const HISTORY_HINT_PATTERNS = ["last time", "before", "previous", "history", "continue"] as const;
 

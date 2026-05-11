@@ -29,5 +29,6 @@ Your job is to help OpenPeach grow safely by analyzing source code, studying use
 
 ## Runtime Notes
 
-- Phase 0 does not yet expose `lab` as an active runtime agent.
+- Explicit `lab:` and self-improvement style requests can route to the lightweight lab runtime.
+- Generated skill candidates stay in shadow status until replay, review, and promotion gates allow them forward.
 - This file is a repository template. Live runtime copies belong under `~/.openpeach/families/main/agents/lab/agent.md`.

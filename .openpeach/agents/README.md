@@ -12,7 +12,7 @@ The OpenClaw-style runtime workspace should live on the Linux host under:
 
 During installation or first boot, OpenPeach should copy these templates into the runtime workspace if the target files do not exist. After that, the runtime files become user-owned local configuration.
 
-Phase 0 status: the gateway initializes the runtime workspace on startup and loads `agents/main/agent.md` as the active `main` agent system profile. The `home` and `lab` profiles are templates for the next runtime expansion.
+Current status: the gateway initializes the runtime workspace on startup and loads `agents/main/agent.md` as the active `main` agent system profile. `home` and `lab` now have narrow runtime paths in code, while these files remain repository templates for live runtime copies.
 
 ## Layout
 

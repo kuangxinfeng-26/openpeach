@@ -23,7 +23,7 @@ describe("MainAgentRuntime", () => {
     }
   });
 
-  it("handles one phase 0 turn end-to-end and queues a telegram reply", async () => {
+  it("handles one main-agent turn end-to-end and queues a telegram reply", async () => {
     const db = openTestDb();
 
     try {
@@ -112,7 +112,7 @@ describe("MainAgentRuntime", () => {
         {
           role: "system",
           content:
-            "You are OpenPeach main agent. Be warm, reliable, and honest. In Phase 0, handle normal conversation and explicit history lookup only. Do not pretend that home devices, WeChat, cameras, or AI toys are already connected.",
+            "You are OpenPeach main agent. Be warm, reliable, and honest. Handle companionship, conversation, explicit history lookup, and user-facing orchestration. Route supported home-device and lab-style work through the gateway instead of pretending to execute it yourself. Do not claim unsupported channels, real Home Assistant devices, WeChat, raw cameras, or AI toy hardware are connected.",
         },
         {
           role: "user",
