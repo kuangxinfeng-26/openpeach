@@ -97,11 +97,13 @@ describe("task engine", () => {
     expect(parseDeviceIntent("\u8bf7\u5e2e\u6211\u6253\u5f00\u5ba2\u5385\u706f")).toEqual({
       deviceId: "mock:living-room-lamp",
       matchedAlias: "\u5ba2\u5385\u706f",
+      action: "turn_on",
     });
 
     expect(parseDeviceIntent("start camera recording")).toEqual({
       deviceId: "mock:front-camera",
       matchedAlias: "camera",
+      action: "start_recording",
     });
 
     expect(parseDeviceIntent("chat with me")).toBeUndefined();
@@ -111,6 +113,7 @@ describe("task engine", () => {
     expect(parseDeviceIntent("trigger story bunny bedtime")).toEqual({
       deviceId: "toy:story-bunny",
       matchedAlias: "story bunny",
+      action: "trigger_play_scene",
     });
 
     expect(

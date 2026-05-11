@@ -179,6 +179,20 @@ export function createRepositories(db: OpenPeachDb) {
     LIMIT 20
   `);
 
+  const listRecentMessagesStatement = db.prepare(`
+    SELECT message_id, session_id, role, text, timestamp_ms
+    FROM session_messages
+    WHERE session_id = ?
+    ORDER BY timestamp_ms DESC, message_id DESC
+    LIMIT ?
+  `);
+
+  const countSessionMessagesStatement = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM session_messages
+    WHERE session_id = ?
+  `);
+
   const insertEventStatement = db.prepare(`
     INSERT INTO events (
       event_id,
@@ -505,6 +519,27 @@ export function createRepositories(db: OpenPeachDb) {
           text: result.text,
         };
       });
+    },
+
+    listRecentMessages(
+      sessionId: string,
+      limit: number = 20,
+    ): MessageRecord[] {
+      const rows = listRecentMessagesStatement.all(sessionId, limit) as MessageRow[];
+      return rows
+        .map((row) => ({
+          messageId: row.message_id,
+          sessionId: row.session_id,
+          role: row.role,
+          text: row.text,
+          timestampMs: row.timestamp_ms,
+        }))
+        .reverse();
+    },
+
+    countSessionMessages(sessionId: string): number {
+      const row = countSessionMessagesStatement.get(sessionId) as { count: number } | undefined;
+      return row?.count ?? 0;
     },
   };
 
